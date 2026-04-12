@@ -3,11 +3,11 @@
   "name": "Touch-i by IoT Everythin",
   "codeowners": ["@joelvarun"],
   "config_flow": true,
+  "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/joelvarun/ioteverythin-display",
-  "issue_tracker": "https://github.com/joelvarun/ioteverythin-display/issues",
   "integration_type": "device",
   "iot_class": "local_push",
-  "dependencies": ["frontend", "http"],
-  "version": "1.0.0",
-  "requirements": ["aiohttp"]
+  "issue_tracker": "https://github.com/joelvarun/ioteverythin-display/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
 }
