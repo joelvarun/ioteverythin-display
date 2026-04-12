@@ -4,7 +4,7 @@
  */
 const GOLD='#D4A017',GOLD_B='#FFD700',DARK='#181818',BG='#111';
 const LIGHT_ICONS=['bulb','tube','fan','socket','alarm','warm'];
-const CATEGORIES=['Hall','Dining','Balcony','Entrance','Toilet','Bedroom','Kitchen','Custom'];
+const CATEGORIES=['Hall','Dining','Balcony','Entrance','Toilet','Bedroom','Kitchen'];
 
 class IotEverythinDisplayPanel extends HTMLElement {
   constructor(){
@@ -88,6 +88,12 @@ class IotEverythinDisplayPanel extends HTMLElement {
 
   _stateVal(eid){return this._hass?.states?.[eid]?.state||'?';}
 
+  _getCats(){
+    const custom=new Set();
+    this._config.lights.forEach(l=>{if(l.cat&&!CATEGORIES.includes(l.cat))custom.add(l.cat);});
+    return [...CATEGORIES,...custom];
+  }
+
   _addLight(){
     const sel=this.querySelector('#light-picker');
     const catSel=this.querySelector('#light-cat');
@@ -97,12 +103,19 @@ class IotEverythinDisplayPanel extends HTMLElement {
     const domain=eid.split('.')[0];
     const attrs=this._hass.states[eid]?.attributes||{};
     const cm=attrs.supported_color_modes||[];
+    let cat=catSel?.value||'Hall';
+    if(cat==='__new__'){
+      const n=prompt('Enter new area name:');
+      if(!n)return;
+      cat=n.trim().substring(0,18);
+      if(!cat)return;
+    }
     this._config.lights.push({
       eid,label:this._friendly(eid).substring(0,20),
       icon:domain==='light'?'bulb':'socket',
       dimmable:domain==='light'&&cm.some(m=>m!=='onoff'),
       rgb:!!cm.some(m=>['rgb','rgbw','rgbww','hs','xy'].includes(m)),
-      cat:catSel?.value||'Custom',domain
+      cat,domain
     });
     this._render();
   }
@@ -174,10 +187,11 @@ class IotEverythinDisplayPanel extends HTMLElement {
 .cat-label{color:${GOLD};font-size:13px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
 .erow{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#222;border-radius:6px;margin-bottom:4px;font-size:13px;flex-wrap:wrap}
 .erow .eid{color:#666;font-size:11px;flex:1;min-width:120px}
+.erow .fname{color:#bbb;font-size:12px;min-width:100px;font-weight:500}
 .erow .st{font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600}
 .erow .st.on{background:#1a3a1a;color:#2ecc71}
 .erow .st.off{background:#2a1a1a;color:#666}
-.erow input[type=text]{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:3px 6px;width:85px;font-size:12px}
+.erow input[type=text]{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:3px 6px;width:110px;font-size:12px}
 .erow select{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:3px;font-size:12px}
 .erow label{font-size:11px;color:#aaa;display:flex;align-items:center;gap:3px}
 .rm{cursor:pointer;color:#c0392b;font-weight:bold;font-size:14px;padding:0 4px}
@@ -221,19 +235,21 @@ ${infoHtml}
   _renderLights(){
     const lights=this._config.lights;
     const cats={};
-    lights.forEach((l,i)=>{const c=l.cat||'Custom';if(!cats[c])cats[c]=[];cats[c].push({...l,_idx:i});});
+    lights.forEach((l,i)=>{const c=l.cat||'Hall';if(!cats[c])cats[c]=[];cats[c].push({...l,_idx:i});});
     let groupsHtml='';
     for(const[cat,items]of Object.entries(cats)){
       let rows='';
       for(const l of items){
         const st=this._stateVal(l.eid);
         const stC=st==='on'?'on':'off';
+        const allCats=this._getCats();
         rows+=`<div class="erow">
-<input type="text" value="${(l.label||'').replace(/"/g,'&quot;')}" data-lbl="${l._idx}" title="Label">
+<span class="fname">${this._friendly(l.eid)}</span>
+<input type="text" value="${(l.label||'').replace(/"/g,'&quot;')}" data-lbl="${l._idx}" placeholder="Alias" title="Display name on screen">
 <span class="eid">${l.eid}</span>
 <span class="st ${stC}">${st}</span>
 <select data-icon="${l._idx}">${LIGHT_ICONS.map(ic=>'<option value="'+ic+'"'+(l.icon===ic?' selected':'')+'>'+ic+'</option>').join('')}</select>
-<select data-cat="${l._idx}">${CATEGORIES.map(c=>'<option value="'+c+'"'+((l.cat||'Custom')===c?' selected':'')+'>'+c+'</option>').join('')}</select>
+<select data-cat="${l._idx}">${allCats.map(c=>'<option value="'+c+'"'+((l.cat||'Hall')===c?' selected':'')+'>'+c+'</option>').join('')}<option value="__new__">+ New Area...</option></select>
 <label><input type="checkbox" data-dim="${l._idx}"${l.dimmable?' checked':''}> Dim</label>
 <label><input type="checkbox" data-rgb="${l._idx}"${l.rgb?' checked':''}> RGB</label>
 <span class="rm" data-rm-light="${l._idx}">&#10005;</span>
@@ -246,7 +262,7 @@ ${infoHtml}
     return `<div class="sec"><h3>Light &amp; Switch Entities</h3>${groupsHtml}
 <div class="add-row">
 <select id="light-picker"><option value="">Select light/switch entity...</option>${lightEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
-<select id="light-cat">${CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')}</select>
+<select id="light-cat">${this._getCats().map(c=>'<option value="'+c+'">'+c+'</option>').join('')}<option value="__new__">+ New Area...</option></select>
 <button id="add-light-btn">+ Add</button></div></div>`;
   }
 
@@ -262,7 +278,8 @@ ${infoHtml}
       const ct=this._hass.states[ac.eid]?.attributes?.current_temperature||'?';
       const tt=this._hass.states[ac.eid]?.attributes?.temperature||'?';
       return `<div class="erow">
-<input type="text" value="${(ac.label||'').replace(/"/g,'&quot;')}" data-ac-lbl="${i}" title="Label">
+<span class="fname">${this._friendly(ac.eid)}</span>
+<input type="text" value="${(ac.label||'').replace(/"/g,'&quot;')}" data-ac-lbl="${i}" placeholder="Alias" title="Display name on screen">
 <span class="eid">${ac.eid}</span>
 <span class="st ${st==='off'?'off':'on'}">${st} ${ct}deg->${tt}deg</span>
 <label>Min:<input type="number" value="${ac.min}" data-ac-min="${i}" style="width:45px"></label>
@@ -287,7 +304,8 @@ ${infoHtml}
       const st=this._stateVal(d.eid);
       const isOpen=d.inverted?st==='off':st==='on';
       return `<div class="erow">
-<input type="text" value="${(d.label||'').replace(/"/g,'&quot;')}" data-door-lbl="${i}" title="Label">
+<span class="fname">${this._friendly(d.eid)}</span>
+<input type="text" value="${(d.label||'').replace(/"/g,'&quot;')}" data-door-lbl="${i}" placeholder="Alias" title="Display name on screen">
 <span class="eid">${d.eid}</span>
 <span class="st ${isOpen?'on':'off'}">${isOpen?'OPEN':'closed'}</span>
 <label><input type="checkbox" data-door-inv="${i}"${d.inverted?' checked':''}> Inverted</label>
@@ -296,7 +314,8 @@ ${infoHtml}
     const motionRows=(this._config.sensors.motion||[]).map((m,i)=>{
       const st=this._stateVal(m.eid);
       return `<div class="erow">
-<input type="text" value="${(m.label||'').replace(/"/g,'&quot;')}" data-motion-lbl="${i}" title="Label">
+<span class="fname">${this._friendly(m.eid)}</span>
+<input type="text" value="${(m.label||'').replace(/"/g,'&quot;')}" data-motion-lbl="${i}" placeholder="Alias" title="Display name on screen">
 <span class="eid">${m.eid}</span>
 <span class="st ${st==='on'?'on':'off'}">${st==='on'?'ACTIVE':'clear'}</span>
 <span class="rm" data-rm-motion="${i}">&#10005;</span></div>`;
@@ -314,7 +333,11 @@ ${infoHtml}
     this.querySelectorAll('[data-rm-light]').forEach(el=>el.addEventListener('click',()=>{this._config.lights.splice(+el.dataset.rmLight,1);this._render();}));
     this.querySelectorAll('[data-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.lbl].label=el.value;}));
     this.querySelectorAll('[data-icon]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.icon].icon=el.value;}));
-    this.querySelectorAll('[data-cat]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.cat].cat=el.value;this._render();}));
+    this.querySelectorAll('[data-cat]').forEach(el=>el.addEventListener('change',()=>{
+      let v=el.value;
+      if(v==='__new__'){const n=prompt('Enter new area name:');if(!n){el.value=this._config.lights[+el.dataset.cat].cat||'Hall';return;}v=n.trim().substring(0,18);if(!v){el.value=this._config.lights[+el.dataset.cat].cat||'Hall';return;}}
+      this._config.lights[+el.dataset.cat].cat=v;this._render();
+    }));
     this.querySelectorAll('[data-dim]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.dim].dimmable=el.checked;}));
     this.querySelectorAll('[data-rgb]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.rgb].rgb=el.checked;}));
     this.querySelector('#temp-sensor-pick')?.addEventListener('change',e=>{this._config.climate.temp_sensor=e.target.value;});
