@@ -31,18 +31,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "port": DEFAULT_PORT,
     }
 
-    # Register the custom frontend panel
+    # Register the custom frontend panel (skip if already registered)
     panel_dir = os.path.join(os.path.dirname(__file__), "www")
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(
-            "/ioteverythin_display/panel.js",
-            os.path.join(panel_dir, "panel.js"),
-            False,
-        )]
-    )
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(
+                "/ioteverythin_display/panel.js",
+                os.path.join(panel_dir, "panel.js"),
+                False,
+            )]
+        )
+    except RuntimeError:
+        _LOGGER.debug("Static path already registered, skipping")
 
-    # Register a sidebar panel (sync despite the async_ prefix)
-    async_register_built_in_panel(
+    # Register a sidebar panel (skip if already registered)
+    if "ioteverythin-display" not in hass.data.get("frontend_panels", {}):
+        async_register_built_in_panel(
         hass,
         component_name="custom",
         sidebar_title="IoT Display",
