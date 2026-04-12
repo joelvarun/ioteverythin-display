@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to IoT Everythin Display",
+        "description": "Enter the IP address of your display (shown on screen after WiFi connect).",
+        "data": {
+          "host": "Display IP Address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to display. Check the IP and ensure it is powered on."
+    },
+    "abort": {
+      "already_configured": "This display is already configured."
+    }
+  }
+}

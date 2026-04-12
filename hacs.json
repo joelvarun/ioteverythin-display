@@ -1,0 +1,6 @@
+{
+  "name": "IoT Everythin Display",
+  "homeassistant": "2024.1.0",
+  "render_readme": true,
+  "country": ["IN"]
+}
