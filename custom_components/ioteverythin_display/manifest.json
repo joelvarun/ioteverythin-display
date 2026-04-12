@@ -1,9 +1,10 @@
 {
   "domain": "ioteverythin_display",
   "name": "IoT Everythin Display",
-  "codeowners": ["@ioteverythin"],
+  "codeowners": ["@joelvarun"],
   "config_flow": true,
-  "documentation": "https://github.com/ioteverythin/ha-display",
+  "documentation": "https://github.com/joelvarun/ioteverythin-display",
+  "issue_tracker": "https://github.com/joelvarun/ioteverythin-display/issues",
   "integration_type": "device",
   "iot_class": "local_push",
   "version": "1.0.0",
