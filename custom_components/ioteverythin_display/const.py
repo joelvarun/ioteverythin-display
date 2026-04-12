@@ -1,4 +1,4 @@
-"""IoT Everythin Display — Constants."""
+"""Touch-i by IoT Everythin — Constants."""
 
 DOMAIN = "ioteverythin_display"
 CONF_HOST = "host"

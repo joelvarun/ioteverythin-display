@@ -1,4 +1,4 @@
-"""IoT Everythin Display — Config flow."""
+"""Touch-i by IoT Everythin — Config flow."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class IotEverythinDisplayConfigFlow(
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         if resp.status == 200:
                             info = await resp.json()
-                            device_name = info.get("name", "IoT Everythin Display")
+                            device_name = info.get("name", "Touch-i")
                             mac = info.get("mac", host)
 
                             # Prevent duplicate entries for same device

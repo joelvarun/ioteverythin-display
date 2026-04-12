@@ -1,4 +1,4 @@
-"""IoT Everythin Display — Home Assistant Integration.
+"""Touch-i by IoT Everythin — Home Assistant Integration.
 
 Registers a custom panel in the HA sidebar to configure
 which entities appear on the ESP32 touch display.
@@ -49,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_register_built_in_panel(
             hass,
             component_name="custom",
-            sidebar_title="IoT Display",
+            sidebar_title="Touch-i",
             sidebar_icon="mdi:tablet-dashboard",
             frontend_url_path="ioteverythin-display",
             config={
@@ -71,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .websocket_api import async_register_websocket_api
     async_register_websocket_api(hass)
 
-    _LOGGER.info("IoT Everythin Display set up: %s:%s", host, DEFAULT_PORT)
+    _LOGGER.info("Touch-i set up: %s:%s", host, DEFAULT_PORT)
     return True
 
 

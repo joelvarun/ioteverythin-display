@@ -2,7 +2,7 @@
  * IoT Everythin Display - HA Custom Panel v1.3
  * Categories, Dimmable, RGB, Display Settings (brightness/timeout/battery)
  */
-const GOLD='#D4A017',GOLD_B='#FFD700',DARK='#181818',BG='#111';
+const GOLD='#D4A017',GOLD_B='#FFD700',DARK='#181818',BG='#111',BRAND='Touch-i';
 const LIGHT_ICONS=['bulb','tube','fan','socket','alarm','warm'];
 const CATEGORIES=['Hall','Dining','Balcony','Entrance','Toilet','Bedroom','Kitchen'];
 
@@ -213,7 +213,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
 .refresh-btn{background:transparent;color:${GOLD};border:1px solid ${GOLD};border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;margin-left:auto}
 .refresh-btn:hover{background:${GOLD};color:#000}
 </style>
-<div class="hdr"><h1>IoT Everythin Display</h1><button class="refresh-btn" id="refresh-btn">Refresh</button></div>
+<div class="hdr"><h1>Touch-i</h1><span style="color:#777;font-size:13px;margin-top:4px">by IoT Everythin</span><button class="refresh-btn" id="refresh-btn">Refresh</button></div>
 ${infoHtml}
 <div class="tabs">
 <div class="tab ${this._activeTab==='lights'?'active':''}" data-tab="lights">Lights (${nL})</div>

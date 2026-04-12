@@ -1,4 +1,4 @@
-"""IoT Everythin Display — WebSocket API for frontend panel."""
+"""Touch-i by IoT Everythin — WebSocket API for frontend panel."""
 
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ async def _get_or_create_display_token(hass: HomeAssistant, user) -> str:
     try:
         # Check if we already have a refresh token for the display
         for token in user.refresh_tokens.values():
-            if token.client_name == "IoT Everythin Display":
+            if token.client_name == "Touch-i Display":
                 access_token = hass.auth.async_create_access_token(token)
                 _LOGGER.info("Reusing existing display token")
                 return access_token
@@ -151,7 +151,7 @@ async def _get_or_create_display_token(hass: HomeAssistant, user) -> str:
         # Create new refresh + access token
         refresh_token = await hass.auth.async_create_refresh_token(
             user,
-            client_name="IoT Everythin Display",
+            client_name="Touch-i Display",
             token_type="long_lived_access_token",
             access_token_expiration=timedelta(days=3650),
         )
