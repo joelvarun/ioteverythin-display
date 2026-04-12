@@ -1,6 +1,6 @@
 /**
- * IoT Everythin Display - HA Custom Panel v1.1
- * Categories, Dimmable, RGB support
+ * IoT Everythin Display - HA Custom Panel v1.3
+ * Categories, Dimmable, RGB, Display Settings (brightness/timeout/battery)
  */
 const GOLD='#D4A017',GOLD_B='#FFD700',DARK='#181818',BG='#111';
 const LIGHT_ICONS=['bulb','tube','fan','socket','alarm','warm'];
@@ -10,7 +10,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
   constructor(){
     super();
     this._hass=null;
-    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]}};
+    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30}};
     this._allEntities=[];
     this._activeTab='lights';
     this._deviceInfo=null;
@@ -59,6 +59,9 @@ class IotEverythinDisplayPanel extends HTMLElement {
         if(r.sensors.doors) this._config.sensors.doors=r.sensors.doors;
         if(r.sensors.motion) this._config.sensors.motion=r.sensors.motion;
       }
+      if(r.display){
+        this._config.display={...this._config.display,...r.display};
+      }
     }catch(e){
       console.error('[IoTDisplay] get_config FAIL:',e);
     }
@@ -68,7 +71,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
     this._status='Pushing config to display...';
     this._render();
     try{
-      const payload={ha_token:'',lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors};
+      const payload={ha_token:'',lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,display:this._config.display};
       console.log('[IoTDisplay] Pushing config:',JSON.stringify(payload).length,'bytes');
       const r=await this._hass.callWS({type:'ioteverythin_display/push_config',config:payload});
       this._status='Config pushed! (v'+(r.version||'?')+')';
@@ -159,6 +162,8 @@ class IotEverythinDisplayPanel extends HTMLElement {
         +'<span>IP: '+(info.ip||'?')+'</span>'
         +'<span>FW: '+(info.version||'?')+'</span>'
         +'<span>MAC: '+(info.mac||'?')+'</span>'
+        +(info.battery_mv!==undefined?'<span>🔋 '+(info.battery_pct||0)+'% ('+info.battery_mv+'mV)'+(info.charging?' ⚡':'')+'</span>':'')
+        +'<span>💡 '+(info.brightness||'?')+'%</span>'
         +'<span class="dot '+(info.configured?'green':'orange')+'"></span>'
         +'<span>'+(info.configured?'Configured':'Needs config')+'</span></div>';
     }
@@ -214,6 +219,7 @@ ${infoHtml}
 <div class="tab ${this._activeTab==='lights'?'active':''}" data-tab="lights">Lights (${nL})</div>
 <div class="tab ${this._activeTab==='climate'?'active':''}" data-tab="climate">Climate (${nAC} ACs)</div>
 <div class="tab ${this._activeTab==='sensors'?'active':''}" data-tab="sensors">Sensors (${nD+nM})</div>
+<div class="tab ${this._activeTab==='display'?'active':''}" data-tab="display">Display</div>
 </div>
 <div id="tab-content">${this._renderTab()}</div>
 <div class="push-bar"><button id="push-btn">Push Config to Display</button><span class="status">${this._status}</span></div>`;
@@ -229,6 +235,7 @@ ${infoHtml}
       case'lights':return this._renderLights();
       case'climate':return this._renderClimate();
       case'sensors':return this._renderSensors();
+      case'display':return this._renderDisplay();
     }return'';
   }
 
@@ -328,6 +335,38 @@ ${infoHtml}
 <button id="add-motion-btn">+ Add</button></div></div>`;
   }
 
+  _renderDisplay(){
+    const d=this._config.display||{};
+    const br=d.brightness||80;
+    const to=d.timeout||30;
+    const info=this._deviceInfo||{};
+    const batHtml=info.battery_mv!==undefined
+      ?`<div class="sec"><h3>Battery &amp; Power</h3>
+<div class="field-row"><label>Battery:</label><span>${info.battery_pct||0}% (${info.battery_mv||0} mV)</span></div>
+<div class="field-row"><label>Charging:</label><span>${info.charging?'Yes (USB connected)':'No (battery)'}</span></div>
+<div class="field-row"><label>Backlight:</label><span>${info.backlight_on?'ON':'OFF (sleeping)'} — ${info.brightness||'?'}%</span></div>
+</div>`:''
+    return `${batHtml}
+<div class="sec"><h3>Screen Settings</h3>
+<div class="field-row"><label>Brightness (${br}%):</label>
+<input type="range" id="disp-bright" min="10" max="100" step="5" value="${br}" style="flex:1;max-width:320px;accent-color:${GOLD}">
+</div>
+<div class="field-row"><label>Screen timeout:</label>
+<select id="disp-timeout">
+<option value="0"${to==0?' selected':''}>Disabled (always on)</option>
+<option value="10"${to==10?' selected':''}>10 seconds</option>
+<option value="15"${to==15?' selected':''}>15 seconds</option>
+<option value="30"${to==30?' selected':''}>30 seconds</option>
+<option value="60"${to==60?' selected':''}>1 minute</option>
+<option value="120"${to==120?' selected':''}>2 minutes</option>
+<option value="180"${to==180?' selected':''}>3 minutes</option>
+<option value="300"${to==300?' selected':''}>5 minutes</option>
+<option value="600"${to==600?' selected':''}>10 minutes</option>
+</select></div>
+<div style="color:#777;font-size:12px;margin-top:8px">Screen turns off after no touch for the timeout period. Touch to wake.</div>
+</div>`;
+  }
+
   _bindTab(){
     this.querySelector('#add-light-btn')?.addEventListener('click',()=>this._addLight());
     this.querySelectorAll('[data-rm-light]').forEach(el=>el.addEventListener('click',()=>{this._config.lights.splice(+el.dataset.rmLight,1);this._render();}));
@@ -354,6 +393,13 @@ ${infoHtml}
     this.querySelector('#add-motion-btn')?.addEventListener('click',()=>this._addMotion());
     this.querySelectorAll('[data-rm-motion]').forEach(el=>el.addEventListener('click',()=>{this._config.sensors.motion.splice(+el.dataset.rmMotion,1);this._render();}));
     this.querySelectorAll('[data-motion-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.sensors.motion[+el.dataset.motionLbl].label=el.value;}));
+    // Display settings bindings
+    this.querySelector('#disp-bright')?.addEventListener('input',e=>{
+      const v=+e.target.value;this._config.display.brightness=v;
+      const lbl=e.target.closest('.field-row')?.querySelector('label');
+      if(lbl)lbl.textContent='Brightness ('+v+'%):';
+    });
+    this.querySelector('#disp-timeout')?.addEventListener('change',e=>{this._config.display.timeout=+e.target.value;});
   }
 }
 customElements.define('ioteverythin-display-panel',IotEverythinDisplayPanel);
