@@ -44,22 +44,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except RuntimeError:
         _LOGGER.debug("Static path already registered, skipping")
 
-    # Register a sidebar panel (skip if already registered)
-    if "ioteverythin-display" not in hass.data.get("frontend_panels", {}):
+    # Register a sidebar panel
+    try:
         async_register_built_in_panel(
-        hass,
-        component_name="custom",
-        sidebar_title="IoT Display",
-        sidebar_icon="mdi:tablet-dashboard",
-        frontend_url_path="ioteverythin-display",
-        config={
-            "_panel_custom": {
-                "name": "ioteverythin-display-panel",
-                "module_url": "/ioteverythin_display/panel.js",
-            }
-        },
-        require_admin=False,
-    )
+            hass,
+            component_name="custom",
+            sidebar_title="IoT Display",
+            sidebar_icon="mdi:tablet-dashboard",
+            frontend_url_path="ioteverythin-display",
+            config={
+                "_panel_custom": {
+                    "name": "ioteverythin-display-panel",
+                    "module_url": "/ioteverythin_display/panel.js",
+                }
+            },
+            require_admin=False,
+        )
+    except ValueError:
+        _LOGGER.debug("Panel already registered, skipping")
 
     # Store display endpoint info for the frontend panel to read
     hass.data[DOMAIN]["display_url"] = f"http://{host}:{DEFAULT_PORT}"

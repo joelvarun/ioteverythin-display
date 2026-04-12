@@ -1,459 +1,336 @@
 /**
- * IoT Everythin Display — HA Custom Panel
- * ════════════════════════════════════════
- * Sidebar panel that lets users pick entities for each display tab
- * and push the config to the ESP32 display over local WiFi.
- *
- * Three tabs: Lights, Climate, Sensors
- * Entity picker uses HA's built-in entity registry.
+ * IoT Everythin Display - HA Custom Panel v1.1
+ * Categories, Dimmable, RGB support
  */
-
-const GOLD = "#D4A017";
-const GOLD_B = "#FFD700";
-const DARK = "#0D0D0D";
-const BG = "#111111";
-
-const ICON_MAP = {
-  bulb: "mdi:lightbulb",
-  tube: "mdi:fluorescent-tube",
-  fan: "mdi:fan",
-  socket: "mdi:power-socket-eu",
-  alarm: "mdi:bell",
-  warm: "mdi:fire",
-  door: "mdi:door",
-  motion: "mdi:motion-sensor",
-};
+const GOLD='#D4A017',GOLD_B='#FFD700',DARK='#181818',BG='#111';
+const LIGHT_ICONS=['bulb','tube','fan','socket','alarm','warm'];
+const CATEGORIES=['Hall','Dining','Balcony','Entrance','Toilet','Bedroom','Kitchen','Custom'];
 
 class IotEverythinDisplayPanel extends HTMLElement {
-  constructor() {
+  constructor(){
     super();
-    this._hass = null;
-    this._config = { lights: [], climate: { temp_sensor: "", hum_sensor: "", acs: [] }, sensors: { doors: [], motion: [] } };
-    this._allEntities = [];
-    this._activeTab = "lights";
-    this._deviceInfo = null;
-    this._status = "";
+    this._hass=null;
+    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]}};
+    this._allEntities=[];
+    this._activeTab='lights';
+    this._deviceInfo=null;
+    this._status='';
+    this._loading=true;
   }
 
-  set hass(hass) {
-    this._hass = hass;
-    if (!this._initialized) {
-      this._initialized = true;
-      this._allEntities = Object.keys(hass.states).sort();
-      this._loadCurrentConfig();
-      this._loadDeviceInfo();
-      this._render();
+  set hass(hass){
+    this._hass=hass;
+    if(!this._initialized){
+      this._initialized=true;
+      this._allEntities=Object.keys(hass.states).sort();
+      this._loadAll();
     } else {
-      this._allEntities = Object.keys(hass.states).sort();
+      this._allEntities=Object.keys(hass.states).sort();
     }
   }
 
-  async _loadDeviceInfo() {
-    try {
-      const result = await this._hass.callWS({ type: "ioteverythin_display/get_info" });
-      this._deviceInfo = result;
-      this._render();
-    } catch (e) {
-      this._deviceInfo = { error: e.message };
-      this._render();
-    }
-  }
-
-  async _loadCurrentConfig() {
-    try {
-      const result = await this._hass.callWS({ type: "ioteverythin_display/get_config" });
-      if (result.lights && result.lights.length > 0) this._config.lights = result.lights;
-      if (result.climate) this._config.climate = result.climate;
-      if (result.sensors) this._config.sensors = result.sensors;
-      this._render();
-    } catch (e) {
-      console.warn("Could not load display config:", e);
-    }
-  }
-
-  async _pushConfig() {
-    this._status = "Pushing config to display...";
+  async _loadAll(){
+    console.log('[IoTDisplay] Panel init - loading device info and config...');
+    await Promise.all([this._loadDeviceInfo(),this._loadCurrentConfig()]);
+    this._loading=false;
     this._render();
-    try {
-      const result = await this._hass.callWS({
-        type: "ioteverythin_display/push_config",
-        config: {
-          ha_token: "", // Will be filled by integration or user must set
-          lights: this._config.lights,
-          climate: this._config.climate,
-          sensors: this._config.sensors,
-        },
-      });
-      this._status = `Config pushed! (v${result.version || "?"})`;
-    } catch (e) {
-      this._status = `Error: ${e.message}`;
+  }
+
+  async _loadDeviceInfo(){
+    try{
+      const r=await this._hass.callWS({type:'ioteverythin_display/get_info'});
+      console.log('[IoTDisplay] get_info OK:',JSON.stringify(r));
+      this._deviceInfo=r;
+    }catch(e){
+      console.error('[IoTDisplay] get_info FAIL:',e);
+      this._deviceInfo={error:String(e.message||e)};
+    }
+  }
+
+  async _loadCurrentConfig(){
+    try{
+      const r=await this._hass.callWS({type:'ioteverythin_display/get_config'});
+      console.log('[IoTDisplay] get_config OK - lights:',r.lights?.length,'acs:',r.climate?.acs?.length,
+        'doors:',r.sensors?.doors?.length,'motion:',r.sensors?.motion?.length);
+      if(r.lights&&r.lights.length>0) this._config.lights=r.lights;
+      if(r.climate&&(r.climate.temp_sensor||r.climate.acs?.length))
+        this._config.climate={...this._config.climate,...r.climate};
+      if(r.sensors){
+        if(r.sensors.doors) this._config.sensors.doors=r.sensors.doors;
+        if(r.sensors.motion) this._config.sensors.motion=r.sensors.motion;
+      }
+    }catch(e){
+      console.error('[IoTDisplay] get_config FAIL:',e);
+    }
+  }
+
+  async _pushConfig(){
+    this._status='Pushing config to display...';
+    this._render();
+    try{
+      const payload={ha_token:'',lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors};
+      console.log('[IoTDisplay] Pushing config:',JSON.stringify(payload).length,'bytes');
+      const r=await this._hass.callWS({type:'ioteverythin_display/push_config',config:payload});
+      this._status='Config pushed! (v'+(r.version||'?')+')';
+      console.log('[IoTDisplay] push OK:',r);
+    }catch(e){
+      this._status='Error: '+(e.message||e);
+      console.error('[IoTDisplay] push FAIL:',e);
     }
     this._render();
-    setTimeout(() => { this._status = ""; this._render(); }, 4000);
+    setTimeout(()=>{this._status='';this._render();},5000);
   }
 
-  _domainFilter(domain) {
-    return this._allEntities.filter(e => e.startsWith(domain + "."));
+  _friendly(eid){
+    const s=this._hass?.states?.[eid];
+    return s?.attributes?.friendly_name||eid.split('.').pop().replace(/_/g,' ');
   }
 
-  _friendlyName(entityId) {
-    const state = this._hass.states[entityId];
-    return state?.attributes?.friendly_name || entityId.split(".").pop().replace(/_/g, " ");
-  }
+  _stateVal(eid){return this._hass?.states?.[eid]?.state||'?';}
 
-  _addLight(entityId) {
-    if (this._config.lights.find(l => l.eid === entityId)) return;
-    const domain = entityId.split(".")[0];
+  _addLight(){
+    const sel=this.querySelector('#light-picker');
+    const catSel=this.querySelector('#light-cat');
+    if(!sel?.value)return;
+    const eid=sel.value;
+    if(this._config.lights.find(l=>l.eid===eid))return;
+    const domain=eid.split('.')[0];
+    const attrs=this._hass.states[eid]?.attributes||{};
+    const cm=attrs.supported_color_modes||[];
     this._config.lights.push({
-      eid: entityId,
-      label: this._friendlyName(entityId).replace(/ /g, "\n").substring(0, 20),
-      icon: domain === "light" ? "bulb" : "socket",
-      dimmable: domain === "light",
-      domain: domain,
-      cat: "Custom",
+      eid,label:this._friendly(eid).substring(0,20),
+      icon:domain==='light'?'bulb':'socket',
+      dimmable:domain==='light'&&cm.some(m=>m!=='onoff'),
+      rgb:!!cm.some(m=>['rgb','rgbw','rgbww','hs','xy'].includes(m)),
+      cat:catSel?.value||'Custom',domain
     });
     this._render();
   }
 
-  _removeLight(idx) {
-    this._config.lights.splice(idx, 1);
+  _addAC(){
+    const sel=this.querySelector('#ac-picker');
+    if(!sel?.value)return;
+    if(this._config.climate.acs.find(a=>a.eid===sel.value))return;
+    const attrs=this._hass.states[sel.value]?.attributes||{};
+    this._config.climate.acs.push({eid:sel.value,label:this._friendly(sel.value).substring(0,20),min:attrs.min_temp||16,max:attrs.max_temp||30});
     this._render();
   }
 
-  _addAC(entityId) {
-    if (this._config.climate.acs.find(a => a.eid === entityId)) return;
-    this._config.climate.acs.push({
-      eid: entityId,
-      label: this._friendlyName(entityId),
-      min: 16,
-      max: 30,
-    });
+  _addDoor(){
+    const sel=this.querySelector('#door-picker');
+    if(!sel?.value)return;
+    if(this._config.sensors.doors.find(d=>d.eid===sel.value))return;
+    this._config.sensors.doors.push({eid:sel.value,label:this._friendly(sel.value).substring(0,20),inverted:false});
     this._render();
   }
 
-  _removeAC(idx) {
-    this._config.climate.acs.splice(idx, 1);
+  _addMotion(){
+    const sel=this.querySelector('#motion-picker');
+    if(!sel?.value)return;
+    if(this._config.sensors.motion.find(m=>m.eid===sel.value))return;
+    this._config.sensors.motion.push({eid:sel.value,label:this._friendly(sel.value).substring(0,20)});
     this._render();
   }
 
-  _addDoor(entityId) {
-    if (this._config.sensors.doors.find(d => d.eid === entityId)) return;
-    this._config.sensors.doors.push({
-      eid: entityId,
-      label: this._friendlyName(entityId).replace(/ /g, "\n").substring(0, 20),
-      inverted: false,
-    });
-    this._render();
-  }
-
-  _removeDoor(idx) {
-    this._config.sensors.doors.splice(idx, 1);
-    this._render();
-  }
-
-  _addMotion(entityId) {
-    if (this._config.sensors.motion.find(m => m.eid === entityId)) return;
-    this._config.sensors.motion.push({
-      eid: entityId,
-      label: this._friendlyName(entityId).replace(/ /g, "\n").substring(0, 20),
-    });
-    this._render();
-  }
-
-  _removeMotion(idx) {
-    this._config.sensors.motion.splice(idx, 1);
-    this._render();
-  }
-
-  _render() {
-    const info = this._deviceInfo;
-    const infoHtml = info
-      ? info.error
-        ? `<div class="info-bar error">Display offline: ${info.error}</div>`
-        : `<div class="info-bar">
-            <span><b>${info.name || "Display"}</b></span>
-            <span>IP: ${info.ip || "?"}</span>
-            <span>FW: ${info.version || "?"}</span>
-            <span>MAC: ${info.mac || "?"}</span>
-            <span class="dot ${info.configured ? "green" : "orange"}"></span>
-            <span>${info.configured ? "Configured" : "Needs config"}</span>
-          </div>`
-      : `<div class="info-bar">Connecting to display...</div>`;
-
-    this.innerHTML = `
-      <style>
-        :host { display: block; padding: 16px; font-family: sans-serif; color: #eee; background: #111; min-height: 100vh; }
-        .header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-        .header h1 { color: ${GOLD}; margin: 0; font-size: 24px; }
-        .header img { height: 36px; }
-        .info-bar { background: ${DARK}; padding: 10px 16px; border-radius: 10px; margin-bottom: 16px;
-                    display: flex; gap: 16px; align-items: center; font-size: 14px; flex-wrap: wrap; }
-        .info-bar.error { border: 1px solid #c0392b; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-        .dot.green { background: #2ecc71; }
-        .dot.orange { background: ${GOLD}; }
-        .tabs { display: flex; gap: 0; margin-bottom: 16px; }
-        .tab { padding: 10px 24px; cursor: pointer; border-bottom: 2px solid transparent;
-               color: #888; font-size: 16px; font-weight: 500; }
-        .tab.active { color: ${GOLD}; border-bottom-color: ${GOLD}; }
-        .tab:hover { color: ${GOLD_B}; }
-        .section { background: ${DARK}; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-        .section h3 { color: ${GOLD}; margin: 0 0 12px 0; font-size: 16px; }
-        .entity-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-        .entity-chip { background: #1a1a0a; border: 1px solid #333; border-radius: 8px; padding: 6px 12px;
-                       display: flex; align-items: center; gap: 8px; font-size: 13px; }
-        .entity-chip .remove { cursor: pointer; color: #c0392b; font-weight: bold; }
-        .entity-chip .eid { color: #888; font-size: 11px; }
-        .add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .add-row select { background: #222; color: #eee; border: 1px solid #444; border-radius: 6px;
-                         padding: 8px; font-size: 14px; max-width: 350px; flex: 1; }
-        .add-row button { background: ${GOLD}; color: #000; border: none; border-radius: 6px;
-                         padding: 8px 16px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .add-row button:hover { background: ${GOLD_B}; }
-        .push-bar { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
-        .push-bar button { background: ${GOLD}; color: #000; border: none; border-radius: 8px;
-                          padding: 12px 32px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .push-bar button:hover { background: ${GOLD_B}; }
-        .push-bar .status { color: #aaa; font-size: 14px; }
-        .field-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-        .field-row label { color: #aaa; font-size: 13px; min-width: 100px; }
-        .field-row select, .field-row input { background: #222; color: #eee; border: 1px solid #444;
-                                              border-radius: 6px; padding: 6px; font-size: 13px; flex: 1; max-width: 350px; }
-        .icon-select { width: 80px !important; min-width: 80px !important; flex: unset !important; }
-      </style>
-
-      <div class="header">
-        <h1>IoT Everythin Display</h1>
-      </div>
-
-      ${infoHtml}
-
-      <div class="tabs">
-        <div class="tab ${this._activeTab === "lights" ? "active" : ""}" data-tab="lights">Lights (${this._config.lights.length})</div>
-        <div class="tab ${this._activeTab === "climate" ? "active" : ""}" data-tab="climate">Climate (${this._config.climate.acs.length} ACs)</div>
-        <div class="tab ${this._activeTab === "sensors" ? "active" : ""}" data-tab="sensors">Sensors (${(this._config.sensors.doors?.length || 0) + (this._config.sensors.motion?.length || 0)})</div>
-      </div>
-
-      <div id="tab-content">
-        ${this._renderActiveTab()}
-      </div>
-
-      <div class="push-bar">
-        <button id="push-btn">Push Config to Display</button>
-        <span class="status">${this._status}</span>
-      </div>
-    `;
-
-    // Event listeners
-    this.querySelectorAll(".tab").forEach(tab => {
-      tab.addEventListener("click", () => {
-        this._activeTab = tab.dataset.tab;
-        this._render();
-      });
-    });
-
-    this.querySelector("#push-btn")?.addEventListener("click", () => this._pushConfig());
-
-    // Tab-specific listeners
-    this._attachTabListeners();
-  }
-
-  _renderActiveTab() {
-    switch (this._activeTab) {
-      case "lights": return this._renderLightsTab();
-      case "climate": return this._renderClimateTab();
-      case "sensors": return this._renderSensorsTab();
-      default: return "";
+  _render(){
+    const info=this._deviceInfo;
+    let infoHtml;
+    if(this._loading){
+      infoHtml='<div class="info-bar">Loading display info...</div>';
+    }else if(!info){
+      infoHtml='<div class="info-bar warn">Could not reach display</div>';
+    }else if(info.error){
+      infoHtml='<div class="info-bar warn">Display offline: '+info.error+'</div>';
+    }else{
+      infoHtml='<div class="info-bar ok"><b>'+(info.name||'Display')+'</b>'
+        +'<span>IP: '+(info.ip||'?')+'</span>'
+        +'<span>FW: '+(info.version||'?')+'</span>'
+        +'<span>MAC: '+(info.mac||'?')+'</span>'
+        +'<span class="dot '+(info.configured?'green':'orange')+'"></span>'
+        +'<span>'+(info.configured?'Configured':'Needs config')+'</span></div>';
     }
+
+    const nL=this._config.lights.length;
+    const nAC=this._config.climate.acs.length;
+    const nD=this._config.sensors.doors?.length||0;
+    const nM=this._config.sensors.motion?.length||0;
+
+    this.innerHTML=`<style>
+:host{display:block;padding:16px;font-family:Roboto,sans-serif;color:#eee;background:${BG};min-height:100vh}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.hdr h1{color:${GOLD};margin:0;font-size:22px}
+.info-bar{background:${DARK};padding:10px 16px;border-radius:10px;margin-bottom:12px;display:flex;gap:14px;align-items:center;font-size:13px;flex-wrap:wrap}
+.info-bar.warn{border:1px solid #c0392b;color:#e74c3c}
+.info-bar.ok{border:1px solid #333}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.dot.green{background:#2ecc71}.dot.orange{background:${GOLD}}
+.tabs{display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid #333}
+.tab{padding:10px 20px;cursor:pointer;color:#777;font-size:15px;font-weight:500;border-bottom:2px solid transparent}
+.tab.active{color:${GOLD};border-bottom-color:${GOLD}}
+.tab:hover{color:${GOLD_B}}
+.sec{background:${DARK};border-radius:10px;padding:14px;margin-bottom:10px}
+.sec h3{color:${GOLD};margin:0 0 10px 0;font-size:15px}
+.cat-group{margin-bottom:12px}
+.cat-label{color:${GOLD};font-size:13px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.erow{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#222;border-radius:6px;margin-bottom:4px;font-size:13px;flex-wrap:wrap}
+.erow .eid{color:#666;font-size:11px;flex:1;min-width:120px}
+.erow .st{font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600}
+.erow .st.on{background:#1a3a1a;color:#2ecc71}
+.erow .st.off{background:#2a1a1a;color:#666}
+.erow input[type=text]{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:3px 6px;width:85px;font-size:12px}
+.erow select{background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:3px;font-size:12px}
+.erow label{font-size:11px;color:#aaa;display:flex;align-items:center;gap:3px}
+.rm{cursor:pointer;color:#c0392b;font-weight:bold;font-size:14px;padding:0 4px}
+.add-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.add-row select{background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:7px;font-size:13px;max-width:320px;flex:1}
+.add-row button,.push-bar button{background:${GOLD};color:#000;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:bold;font-size:13px}
+.add-row button:hover,.push-bar button:hover{background:${GOLD_B}}
+.push-bar{display:flex;gap:12px;align-items:center;margin-top:14px}
+.push-bar button{padding:12px 28px;font-size:15px;border-radius:8px}
+.push-bar .status{color:#aaa;font-size:13px}
+.field-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.field-row label{color:#aaa;font-size:13px;min-width:110px}
+.field-row select,.field-row input{background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:6px;font-size:13px;flex:1;max-width:320px}
+.refresh-btn{background:transparent;color:${GOLD};border:1px solid ${GOLD};border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;margin-left:auto}
+.refresh-btn:hover{background:${GOLD};color:#000}
+</style>
+<div class="hdr"><h1>IoT Everythin Display</h1><button class="refresh-btn" id="refresh-btn">Refresh</button></div>
+${infoHtml}
+<div class="tabs">
+<div class="tab ${this._activeTab==='lights'?'active':''}" data-tab="lights">Lights (${nL})</div>
+<div class="tab ${this._activeTab==='climate'?'active':''}" data-tab="climate">Climate (${nAC} ACs)</div>
+<div class="tab ${this._activeTab==='sensors'?'active':''}" data-tab="sensors">Sensors (${nD+nM})</div>
+</div>
+<div id="tab-content">${this._renderTab()}</div>
+<div class="push-bar"><button id="push-btn">Push Config to Display</button><span class="status">${this._status}</span></div>`;
+
+    this.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{this._activeTab=t.dataset.tab;this._render();}));
+    this.querySelector('#push-btn')?.addEventListener('click',()=>this._pushConfig());
+    this.querySelector('#refresh-btn')?.addEventListener('click',()=>{this._loading=true;this._render();this._loadAll();});
+    this._bindTab();
   }
 
-  _renderLightsTab() {
-    const lightEntities = this._allEntities.filter(e => e.startsWith("light.") || e.startsWith("switch."));
-    const chips = this._config.lights.map((l, i) => `
-      <div class="entity-chip">
-        <span>${l.label.replace(/\n/g, " ")}</span>
-        <span class="eid">${l.eid}</span>
-        <select class="icon-select" data-light-icon="${i}">
-          ${Object.keys(ICON_MAP).filter(k => !["door","motion"].includes(k)).map(k =>
-            `<option value="${k}" ${l.icon === k ? "selected" : ""}>${k}</option>`
-          ).join("")}
-        </select>
-        <label style="font-size:11px;color:#aaa"><input type="checkbox" data-light-dim="${i}" ${l.dimmable ? "checked" : ""}> Dim</label>
-        <span class="remove" data-remove-light="${i}">✕</span>
-      </div>
-    `).join("");
-
-    return `
-      <div class="section">
-        <h3>Light &amp; Switch Entities</h3>
-        <div class="entity-list">${chips || "<span style='color:#666'>No entities added yet</span>"}</div>
-        <div class="add-row">
-          <select id="light-picker">
-            <option value="">Select entity...</option>
-            ${lightEntities.map(e => `<option value="${e}">${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-          <button id="add-light-btn">+ Add</button>
-        </div>
-      </div>
-    `;
+  _renderTab(){
+    switch(this._activeTab){
+      case'lights':return this._renderLights();
+      case'climate':return this._renderClimate();
+      case'sensors':return this._renderSensors();
+    }return'';
   }
 
-  _renderClimateTab() {
-    const tempSensors = this._allEntities.filter(e => e.startsWith("sensor.") && (e.includes("temp") || e.includes("therm")));
-    const humSensors = this._allEntities.filter(e => e.startsWith("sensor.") && (e.includes("humid") || e.includes("moisture")));
-    const climateEntities = this._allEntities.filter(e => e.startsWith("climate."));
-
-    const acChips = this._config.climate.acs.map((ac, i) => `
-      <div class="entity-chip">
-        <span>${ac.label}</span>
-        <span class="eid">${ac.eid}</span>
-        <span style="color:#aaa;font-size:11px">${ac.min}-${ac.max}°</span>
-        <span class="remove" data-remove-ac="${i}">✕</span>
-      </div>
-    `).join("");
-
-    return `
-      <div class="section">
-        <h3>Temperature &amp; Humidity Sensors</h3>
-        <div class="field-row">
-          <label>Temp sensor:</label>
-          <select id="temp-sensor-pick">
-            <option value="">None</option>
-            ${tempSensors.map(e => `<option value="${e}" ${this._config.climate.temp_sensor === e ? "selected" : ""}>${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-        </div>
-        <div class="field-row">
-          <label>Humidity sensor:</label>
-          <select id="hum-sensor-pick">
-            <option value="">None</option>
-            ${humSensors.map(e => `<option value="${e}" ${this._config.climate.hum_sensor === e ? "selected" : ""}>${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-        </div>
-      </div>
-      <div class="section">
-        <h3>Air Conditioners</h3>
-        <div class="entity-list">${acChips || "<span style='color:#666'>No ACs added yet</span>"}</div>
-        <div class="add-row">
-          <select id="ac-picker">
-            <option value="">Select climate entity...</option>
-            ${climateEntities.map(e => `<option value="${e}">${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-          <button id="add-ac-btn">+ Add</button>
-        </div>
-      </div>
-    `;
+  _renderLights(){
+    const lights=this._config.lights;
+    const cats={};
+    lights.forEach((l,i)=>{const c=l.cat||'Custom';if(!cats[c])cats[c]=[];cats[c].push({...l,_idx:i});});
+    let groupsHtml='';
+    for(const[cat,items]of Object.entries(cats)){
+      let rows='';
+      for(const l of items){
+        const st=this._stateVal(l.eid);
+        const stC=st==='on'?'on':'off';
+        rows+=`<div class="erow">
+<input type="text" value="${(l.label||'').replace(/"/g,'&quot;')}" data-lbl="${l._idx}" title="Label">
+<span class="eid">${l.eid}</span>
+<span class="st ${stC}">${st}</span>
+<select data-icon="${l._idx}">${LIGHT_ICONS.map(ic=>'<option value="'+ic+'"'+(l.icon===ic?' selected':'')+'>'+ic+'</option>').join('')}</select>
+<select data-cat="${l._idx}">${CATEGORIES.map(c=>'<option value="'+c+'"'+((l.cat||'Custom')===c?' selected':'')+'>'+c+'</option>').join('')}</select>
+<label><input type="checkbox" data-dim="${l._idx}"${l.dimmable?' checked':''}> Dim</label>
+<label><input type="checkbox" data-rgb="${l._idx}"${l.rgb?' checked':''}> RGB</label>
+<span class="rm" data-rm-light="${l._idx}">&#10005;</span>
+</div>`;
+      }
+      groupsHtml+=`<div class="cat-group"><div class="cat-label">${cat} (${items.length})</div>${rows}</div>`;
+    }
+    if(!groupsHtml) groupsHtml='<div style="color:#555;padding:8px">No light entities added yet</div>';
+    const lightEnts=this._allEntities.filter(e=>e.startsWith('light.')||e.startsWith('switch.'));
+    return `<div class="sec"><h3>Light &amp; Switch Entities</h3>${groupsHtml}
+<div class="add-row">
+<select id="light-picker"><option value="">Select light/switch entity...</option>${lightEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<select id="light-cat">${CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')}</select>
+<button id="add-light-btn">+ Add</button></div></div>`;
   }
 
-  _renderSensorsTab() {
-    const binarySensors = this._allEntities.filter(e => e.startsWith("binary_sensor."));
-    const doorSensors = binarySensors.filter(e => {
-      const s = this._hass.states[e];
-      return s?.attributes?.device_class === "door" || e.includes("door") || e.includes("contact");
-    });
-    const motionSensors = binarySensors.filter(e => {
-      const s = this._hass.states[e];
-      return s?.attributes?.device_class === "motion" || s?.attributes?.device_class === "occupancy" || e.includes("motion") || e.includes("occupancy");
-    });
-
-    const doorChips = (this._config.sensors.doors || []).map((d, i) => `
-      <div class="entity-chip">
-        <span>${d.label.replace(/\n/g, " ")}</span>
-        <span class="eid">${d.eid}</span>
-        <label style="font-size:11px;color:#aaa"><input type="checkbox" data-door-inv="${i}" ${d.inverted ? "checked" : ""}> Inverted</label>
-        <span class="remove" data-remove-door="${i}">✕</span>
-      </div>
-    `).join("");
-
-    const motionChips = (this._config.sensors.motion || []).map((m, i) => `
-      <div class="entity-chip">
-        <span>${m.label.replace(/\n/g, " ")}</span>
-        <span class="eid">${m.eid}</span>
-        <span class="remove" data-remove-motion="${i}">✕</span>
-      </div>
-    `).join("");
-
-    return `
-      <div class="section">
-        <h3>Door Sensors</h3>
-        <div class="entity-list">${doorChips || "<span style='color:#666'>No door sensors added</span>"}</div>
-        <div class="add-row">
-          <select id="door-picker">
-            <option value="">Select door sensor...</option>
-            ${doorSensors.map(e => `<option value="${e}">${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-          <button id="add-door-btn">+ Add</button>
-        </div>
-      </div>
-      <div class="section">
-        <h3>Motion / Occupancy Sensors</h3>
-        <div class="entity-list">${motionChips || "<span style='color:#666'>No motion sensors added</span>"}</div>
-        <div class="add-row">
-          <select id="motion-picker">
-            <option value="">Select motion sensor...</option>
-            ${motionSensors.map(e => `<option value="${e}">${this._friendlyName(e)} (${e})</option>`).join("")}
-          </select>
-          <button id="add-motion-btn">+ Add</button>
-        </div>
-      </div>
-    `;
+  _renderClimate(){
+    const allS=this._allEntities.filter(e=>e.startsWith('sensor.'));
+    const tempS=allS.filter(e=>{const a=this._hass.states[e]?.attributes;return a?.device_class==='temperature'||e.includes('temp')||e.includes('therm');});
+    const humS=allS.filter(e=>{const a=this._hass.states[e]?.attributes;return a?.device_class==='humidity'||e.includes('humid');});
+    const climEnts=this._allEntities.filter(e=>e.startsWith('climate.'));
+    const tVal=this._stateVal(this._config.climate.temp_sensor);
+    const hVal=this._stateVal(this._config.climate.hum_sensor);
+    const acRows=this._config.climate.acs.map((ac,i)=>{
+      const st=this._stateVal(ac.eid);
+      const ct=this._hass.states[ac.eid]?.attributes?.current_temperature||'?';
+      const tt=this._hass.states[ac.eid]?.attributes?.temperature||'?';
+      return `<div class="erow">
+<input type="text" value="${(ac.label||'').replace(/"/g,'&quot;')}" data-ac-lbl="${i}" title="Label">
+<span class="eid">${ac.eid}</span>
+<span class="st ${st==='off'?'off':'on'}">${st} ${ct}deg->${tt}deg</span>
+<label>Min:<input type="number" value="${ac.min}" data-ac-min="${i}" style="width:45px"></label>
+<label>Max:<input type="number" value="${ac.max}" data-ac-max="${i}" style="width:45px"></label>
+<span class="rm" data-rm-ac="${i}">&#10005;</span></div>`;
+    }).join('');
+    return `<div class="sec"><h3>Temperature &amp; Humidity</h3>
+<div class="field-row"><label>Temp sensor ${tVal!=='?'?'('+tVal+'deg)':''}:</label>
+<select id="temp-sensor-pick"><option value="">None</option>${tempS.map(e=>'<option value="'+e+'"'+(this._config.climate.temp_sensor===e?' selected':'')+'>'+this._friendly(e)+' ('+e+')</option>').join('')}</select></div>
+<div class="field-row"><label>Humidity ${hVal!=='?'?'('+hVal+'%)':''}:</label>
+<select id="hum-sensor-pick"><option value="">None</option>${humS.map(e=>'<option value="'+e+'"'+(this._config.climate.hum_sensor===e?' selected':'')+'>'+this._friendly(e)+' ('+e+')</option>').join('')}</select></div></div>
+<div class="sec"><h3>Air Conditioners</h3>${acRows||'<div style="color:#555;padding:8px">No ACs added</div>'}
+<div class="add-row"><select id="ac-picker"><option value="">Select climate entity...</option>${climEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<button id="add-ac-btn">+ Add</button></div></div>`;
   }
 
-  _attachTabListeners() {
-    // Lights tab
-    this.querySelector("#add-light-btn")?.addEventListener("click", () => {
-      const sel = this.querySelector("#light-picker");
-      if (sel?.value) { this._addLight(sel.value); }
-    });
-    this.querySelectorAll("[data-remove-light]").forEach(el => {
-      el.addEventListener("click", () => this._removeLight(parseInt(el.dataset.removeLight)));
-    });
-    this.querySelectorAll("[data-light-icon]").forEach(el => {
-      el.addEventListener("change", () => {
-        this._config.lights[parseInt(el.dataset.lightIcon)].icon = el.value;
-      });
-    });
-    this.querySelectorAll("[data-light-dim]").forEach(el => {
-      el.addEventListener("change", () => {
-        this._config.lights[parseInt(el.dataset.lightDim)].dimmable = el.checked;
-      });
-    });
+  _renderSensors(){
+    const bs=this._allEntities.filter(e=>e.startsWith('binary_sensor.'));
+    const doorEnts=bs.filter(e=>{const a=this._hass.states[e]?.attributes;return a?.device_class==='door'||a?.device_class==='window'||a?.device_class==='opening'||e.includes('door')||e.includes('contact');});
+    const motionEnts=bs.filter(e=>{const a=this._hass.states[e]?.attributes;return a?.device_class==='motion'||a?.device_class==='occupancy'||a?.device_class==='presence'||e.includes('motion')||e.includes('occupancy');});
+    const doorRows=(this._config.sensors.doors||[]).map((d,i)=>{
+      const st=this._stateVal(d.eid);
+      const isOpen=d.inverted?st==='off':st==='on';
+      return `<div class="erow">
+<input type="text" value="${(d.label||'').replace(/"/g,'&quot;')}" data-door-lbl="${i}" title="Label">
+<span class="eid">${d.eid}</span>
+<span class="st ${isOpen?'on':'off'}">${isOpen?'OPEN':'closed'}</span>
+<label><input type="checkbox" data-door-inv="${i}"${d.inverted?' checked':''}> Inverted</label>
+<span class="rm" data-rm-door="${i}">&#10005;</span></div>`;
+    }).join('');
+    const motionRows=(this._config.sensors.motion||[]).map((m,i)=>{
+      const st=this._stateVal(m.eid);
+      return `<div class="erow">
+<input type="text" value="${(m.label||'').replace(/"/g,'&quot;')}" data-motion-lbl="${i}" title="Label">
+<span class="eid">${m.eid}</span>
+<span class="st ${st==='on'?'on':'off'}">${st==='on'?'ACTIVE':'clear'}</span>
+<span class="rm" data-rm-motion="${i}">&#10005;</span></div>`;
+    }).join('');
+    return `<div class="sec"><h3>Door / Contact Sensors</h3>${doorRows||'<div style="color:#555;padding:8px">No door sensors added</div>'}
+<div class="add-row"><select id="door-picker"><option value="">Select door/contact sensor...</option>${doorEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<button id="add-door-btn">+ Add</button></div></div>
+<div class="sec"><h3>Motion / Occupancy Sensors</h3>${motionRows||'<div style="color:#555;padding:8px">No motion sensors added</div>'}
+<div class="add-row"><select id="motion-picker"><option value="">Select motion/occupancy sensor...</option>${motionEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<button id="add-motion-btn">+ Add</button></div></div>`;
+  }
 
-    // Climate tab
-    this.querySelector("#temp-sensor-pick")?.addEventListener("change", (e) => {
-      this._config.climate.temp_sensor = e.target.value;
-    });
-    this.querySelector("#hum-sensor-pick")?.addEventListener("change", (e) => {
-      this._config.climate.hum_sensor = e.target.value;
-    });
-    this.querySelector("#add-ac-btn")?.addEventListener("click", () => {
-      const sel = this.querySelector("#ac-picker");
-      if (sel?.value) { this._addAC(sel.value); }
-    });
-    this.querySelectorAll("[data-remove-ac]").forEach(el => {
-      el.addEventListener("click", () => this._removeAC(parseInt(el.dataset.removeAc)));
-    });
-
-    // Sensors tab
-    this.querySelector("#add-door-btn")?.addEventListener("click", () => {
-      const sel = this.querySelector("#door-picker");
-      if (sel?.value) { this._addDoor(sel.value); }
-    });
-    this.querySelectorAll("[data-remove-door]").forEach(el => {
-      el.addEventListener("click", () => this._removeDoor(parseInt(el.dataset.removeDoor)));
-    });
-    this.querySelectorAll("[data-door-inv]").forEach(el => {
-      el.addEventListener("change", () => {
-        this._config.sensors.doors[parseInt(el.dataset.doorInv)].inverted = el.checked;
-      });
-    });
-    this.querySelector("#add-motion-btn")?.addEventListener("click", () => {
-      const sel = this.querySelector("#motion-picker");
-      if (sel?.value) { this._addMotion(sel.value); }
-    });
-    this.querySelectorAll("[data-remove-motion]").forEach(el => {
-      el.addEventListener("click", () => this._removeMotion(parseInt(el.dataset.removeMotion)));
-    });
+  _bindTab(){
+    this.querySelector('#add-light-btn')?.addEventListener('click',()=>this._addLight());
+    this.querySelectorAll('[data-rm-light]').forEach(el=>el.addEventListener('click',()=>{this._config.lights.splice(+el.dataset.rmLight,1);this._render();}));
+    this.querySelectorAll('[data-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.lbl].label=el.value;}));
+    this.querySelectorAll('[data-icon]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.icon].icon=el.value;}));
+    this.querySelectorAll('[data-cat]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.cat].cat=el.value;this._render();}));
+    this.querySelectorAll('[data-dim]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.dim].dimmable=el.checked;}));
+    this.querySelectorAll('[data-rgb]').forEach(el=>el.addEventListener('change',()=>{this._config.lights[+el.dataset.rgb].rgb=el.checked;}));
+    this.querySelector('#temp-sensor-pick')?.addEventListener('change',e=>{this._config.climate.temp_sensor=e.target.value;});
+    this.querySelector('#hum-sensor-pick')?.addEventListener('change',e=>{this._config.climate.hum_sensor=e.target.value;});
+    this.querySelector('#add-ac-btn')?.addEventListener('click',()=>this._addAC());
+    this.querySelectorAll('[data-rm-ac]').forEach(el=>el.addEventListener('click',()=>{this._config.climate.acs.splice(+el.dataset.rmAc,1);this._render();}));
+    this.querySelectorAll('[data-ac-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.climate.acs[+el.dataset.acLbl].label=el.value;}));
+    this.querySelectorAll('[data-ac-min]').forEach(el=>el.addEventListener('change',()=>{this._config.climate.acs[+el.dataset.acMin].min=+el.value;}));
+    this.querySelectorAll('[data-ac-max]').forEach(el=>el.addEventListener('change',()=>{this._config.climate.acs[+el.dataset.acMax].max=+el.value;}));
+    this.querySelector('#add-door-btn')?.addEventListener('click',()=>this._addDoor());
+    this.querySelectorAll('[data-rm-door]').forEach(el=>el.addEventListener('click',()=>{this._config.sensors.doors.splice(+el.dataset.rmDoor,1);this._render();}));
+    this.querySelectorAll('[data-door-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.sensors.doors[+el.dataset.doorLbl].label=el.value;}));
+    this.querySelectorAll('[data-door-inv]').forEach(el=>el.addEventListener('change',()=>{this._config.sensors.doors[+el.dataset.doorInv].inverted=el.checked;}));
+    this.querySelector('#add-motion-btn')?.addEventListener('click',()=>this._addMotion());
+    this.querySelectorAll('[data-rm-motion]').forEach(el=>el.addEventListener('click',()=>{this._config.sensors.motion.splice(+el.dataset.rmMotion,1);this._render();}));
+    this.querySelectorAll('[data-motion-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.sensors.motion[+el.dataset.motionLbl].label=el.value;}));
   }
 }
-
-customElements.define("ioteverythin-display-panel", IotEverythinDisplayPanel);
+customElements.define('ioteverythin-display-panel',IotEverythinDisplayPanel);
