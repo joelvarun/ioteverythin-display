@@ -11,6 +11,7 @@ import logging
 import os
 
 from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
@@ -32,14 +33,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register the custom frontend panel
     panel_dir = os.path.join(os.path.dirname(__file__), "www")
-    hass.http.register_static_path(
-        f"/ioteverythin_display/panel.js",
-        os.path.join(panel_dir, "panel.js"),
-        cache_headers=False,
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(
+            "/ioteverythin_display/panel.js",
+            os.path.join(panel_dir, "panel.js"),
+            False,
+        )]
     )
 
-    # Register a sidebar panel
-    await async_register_built_in_panel(
+    # Register a sidebar panel (sync despite the async_ prefix)
+    async_register_built_in_panel(
         hass,
         component_name="custom",
         sidebar_title="IoT Display",
