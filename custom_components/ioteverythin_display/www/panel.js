@@ -77,11 +77,12 @@ class IotEverythinDisplayPanel extends HTMLElement {
       this._status='Config pushed! (v'+(r.version||'?')+')';
       console.log('[IoTDisplay] push OK:',r);
     }catch(e){
-      this._status='Error: '+(e.message||e);
+      const em=e.message||e.code||((typeof e==='object')?JSON.stringify(e):String(e));
+      this._status='Error: '+em;
       console.error('[IoTDisplay] push FAIL:',e);
     }
     this._render();
-    setTimeout(()=>{this._status='';this._render();},5000);
+    setTimeout(()=>{this._status='';this._render();},8000);
   }
 
   _friendly(eid){

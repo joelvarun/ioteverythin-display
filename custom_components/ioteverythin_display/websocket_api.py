@@ -119,23 +119,27 @@ async def ws_push_display_config(
     config["ha_token"] = token
     _LOGGER.info("Pushing config with token length: %d", len(token))
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{display_url}/api/config",
-                json=config,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    connection.send_result(msg["id"], result)
-                else:
-                    text = await resp.text()
-                    connection.send_error(
-                        msg["id"], "device_error", f"HTTP {resp.status}: {text}"
-                    )
-    except (aiohttp.ClientError, TimeoutError) as err:
-        connection.send_error(msg["id"], "connection_error", str(err))
+    last_err = None
+    for attempt in range(2):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{display_url}/api/config",
+                    json=config,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        connection.send_result(msg["id"], result)
+                        return
+                    else:
+                        text = await resp.text()
+                        last_err = f"HTTP {resp.status}: {text}"
+        except (aiohttp.ClientError, TimeoutError) as err:
+            last_err = str(err) or type(err).__name__
+            _LOGGER.warning("Push attempt %d failed: %s", attempt + 1, last_err)
+
+    connection.send_error(msg["id"], "connection_error", last_err or "Push failed")
 
 
 async def _get_or_create_display_token(hass: HomeAssistant, user) -> str:
