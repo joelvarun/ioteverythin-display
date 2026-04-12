@@ -106,9 +106,9 @@ async def ws_push_display_config(
 
     config = msg["config"]
 
-    # Inject HA URL and a long-lived token so the display can poll states
-    # The display needs these to fetch entity states from HA
+    # Inject HA URL and auto-generated token so the display can poll states
     config["ha_url"] = get_url(hass)
+    config["ha_token"] = hass.data.get(DOMAIN, {}).get("ha_token", "")
 
     try:
         async with aiohttp.ClientSession() as session:
