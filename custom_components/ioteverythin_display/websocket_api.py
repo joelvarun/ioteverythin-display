@@ -8,7 +8,6 @@ import logging
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.auth.const import TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.network import get_url
@@ -153,7 +152,7 @@ async def _get_or_create_display_token(hass: HomeAssistant, user) -> str:
         refresh_token = await hass.auth.async_create_refresh_token(
             user,
             client_name="IoT Everythin Display",
-            token_type=TOKEN_TYPE_LONG_LIVED_ACCESS_TOKEN,
+            token_type="long_lived_access_token",
             access_token_expiration=timedelta(days=3650),
         )
         access_token = hass.auth.async_create_access_token(refresh_token)
