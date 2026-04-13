@@ -25,6 +25,7 @@ STORAGE_KEY = f"{DOMAIN}.panel_config"
 _LOGGER = logging.getLogger(__name__)
 
 PANEL_URL = "/api/panel_custom/ioteverythin_display"
+PANEL_VERSION = "1.4"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -59,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             config={
                 "_panel_custom": {
                     "name": "ioteverythin-display-panel",
-                    "module_url": "/ioteverythin_display/panel.js",
+                    "module_url": f"/ioteverythin_display/panel.js?v={PANEL_VERSION}",
                 }
             },
             require_admin=False,
