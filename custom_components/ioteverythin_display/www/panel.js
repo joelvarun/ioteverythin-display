@@ -20,12 +20,14 @@ class IotEverythinDisplayPanel extends HTMLElement {
 
   set hass(hass){
     this._hass=hass;
+    this._allEntities=Object.keys(hass.states).sort();
     if(!this._initialized){
       this._initialized=true;
-      this._allEntities=Object.keys(hass.states).sort();
       this._loadAll();
-    } else {
-      this._allEntities=Object.keys(hass.states).sort();
+    } else if(!this.innerHTML){
+      // Re-render if HA cleared our content (navigation away and back)
+      this._loading=true;
+      this._loadAll();
     }
   }
 
