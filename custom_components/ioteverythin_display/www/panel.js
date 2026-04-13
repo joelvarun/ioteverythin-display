@@ -10,7 +10,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
   constructor(){
     super();
     this._hass=null;
-    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30}};
+    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30,battery_timeout:10}};
     this._allEntities=[];
     this._activeTab='lights';
     this._deviceInfo=null;
@@ -380,6 +380,7 @@ ${infoHtml}
     const d=this._config.display||{};
     const br=d.brightness||80;
     const to=d.timeout||30;
+    const bto=d.battery_timeout!=null?d.battery_timeout:10;
     const info=this._deviceInfo||{};
     const batHtml=info.battery_mv!==undefined
       ?`<div class="sec"><h3>Battery &amp; Power</h3>
@@ -387,24 +388,18 @@ ${infoHtml}
 <div class="field-row"><label>Charging:</label><span>${info.charging?'Yes (USB connected)':'No (battery)'}</span></div>
 <div class="field-row"><label>Backlight:</label><span>${info.backlight_on?'ON':'OFF (sleeping)'} — ${info.brightness||'?'}%</span></div>
 </div>`:''
+    const toOpts=[['0','Disabled (always on)'],['10','10 seconds'],['15','15 seconds'],['30','30 seconds'],['60','1 minute'],['120','2 minutes'],['180','3 minutes'],['300','5 minutes'],['600','10 minutes']];
+    const mkOpts=(val)=>toOpts.map(([v,l])=>`<option value="${v}"${+val==+v?' selected':''}>${l}</option>`).join('');
     return `${batHtml}
 <div class="sec"><h3>Screen Settings</h3>
 <div class="field-row"><label>Brightness (${br}%):</label>
 <input type="range" id="disp-bright" min="10" max="100" step="5" value="${br}" style="flex:1;max-width:320px;accent-color:${GOLD}">
 </div>
-<div class="field-row"><label>Screen timeout:</label>
-<select id="disp-timeout">
-<option value="0"${to==0?' selected':''}>Disabled (always on)</option>
-<option value="10"${to==10?' selected':''}>10 seconds</option>
-<option value="15"${to==15?' selected':''}>15 seconds</option>
-<option value="30"${to==30?' selected':''}>30 seconds</option>
-<option value="60"${to==60?' selected':''}>1 minute</option>
-<option value="120"${to==120?' selected':''}>2 minutes</option>
-<option value="180"${to==180?' selected':''}>3 minutes</option>
-<option value="300"${to==300?' selected':''}>5 minutes</option>
-<option value="600"${to==600?' selected':''}>10 minutes</option>
-</select></div>
-<div style="color:#777;font-size:12px;margin-top:8px">Screen turns off after no touch for the timeout period. Touch to wake.</div>
+<div class="field-row"><label>Timeout (USB):</label>
+<select id="disp-timeout">${mkOpts(to)}</select></div>
+<div class="field-row"><label>Timeout (Battery):</label>
+<select id="disp-bat-timeout">${mkOpts(bto)}</select></div>
+<div style="color:#777;font-size:12px;margin-top:8px">Separate timeouts for USB-powered and battery mode. Screen turns off after no touch. Touch to wake.</div>
 </div>`;
   }
 
@@ -441,6 +436,7 @@ ${infoHtml}
       if(lbl)lbl.textContent='Brightness ('+v+'%):';
     });
     this.querySelector('#disp-timeout')?.addEventListener('change',e=>{this._config.display.timeout=+e.target.value;});
+    this.querySelector('#disp-bat-timeout')?.addEventListener('change',e=>{this._config.display.battery_timeout=+e.target.value;});
   }
 }
 customElements.define('ioteverythin-display-panel',IotEverythinDisplayPanel);
