@@ -23,6 +23,8 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_display_info)
     websocket_api.async_register_command(hass, ws_get_display_config)
     websocket_api.async_register_command(hass, ws_push_display_config)
+    websocket_api.async_register_command(hass, ws_save_panel_config)
+    websocket_api.async_register_command(hass, ws_load_panel_config)
 
 
 @websocket_api.websocket_command(
@@ -140,6 +142,44 @@ async def ws_push_display_config(
             _LOGGER.warning("Push attempt %d failed: %s", attempt + 1, last_err)
 
     connection.send_error(msg["id"], "connection_error", last_err or "Push failed")
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ioteverythin_display/save_panel_config",
+        vol.Required("config"): dict,
+    }
+)
+@websocket_api.async_response
+async def ws_save_panel_config(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+):
+    """Save panel config to HA storage for persistence."""
+    store = hass.data.get(DOMAIN, {}).get("store")
+    if not store:
+        connection.send_error(msg["id"], "no_store", "Storage not initialized")
+        return
+    await store.async_save(msg["config"])
+    _LOGGER.info("Panel config saved to HA storage")
+    connection.send_result(msg["id"], {"saved": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ioteverythin_display/load_panel_config",
+    }
+)
+@websocket_api.async_response
+async def ws_load_panel_config(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+):
+    """Load panel config from HA storage."""
+    store = hass.data.get(DOMAIN, {}).get("store")
+    if not store:
+        connection.send_error(msg["id"], "no_store", "Storage not initialized")
+        return
+    data = await store.async_load()
+    connection.send_result(msg["id"], data or {})
 
 
 async def _get_or_create_display_token(hass: HomeAssistant, user) -> str:

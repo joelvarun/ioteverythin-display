@@ -34,8 +34,44 @@ class IotEverythinDisplayPanel extends HTMLElement {
   async _loadAll(){
     console.log('[IoTDisplay] Panel init - loading device info and config...');
     await Promise.all([this._loadDeviceInfo(),this._loadCurrentConfig()]);
+    // If device config is empty, try HA storage backup
+    const hasConfig=this._config.lights.length>0||this._config.climate.acs?.length>0||this._config.sensors.doors?.length>0||this._config.sensors.motion?.length>0;
+    if(!hasConfig){
+      console.log('[IoTDisplay] Device config empty, trying HA storage...');
+      await this._loadFromStorage();
+    }
     this._loading=false;
     this._render();
+  }
+
+  async _loadFromStorage(){
+    try{
+      const r=await this._hass.callWS({type:'ioteverythin_display/load_panel_config'});
+      if(r&&r.lights&&r.lights.length>0){
+        console.log('[IoTDisplay] Restored config from HA storage:',r.lights?.length,'lights');
+        if(r.lights) this._config.lights=r.lights;
+        if(r.climate) this._config.climate={...this._config.climate,...r.climate};
+        if(r.sensors){
+          if(r.sensors.doors) this._config.sensors.doors=r.sensors.doors;
+          if(r.sensors.motion) this._config.sensors.motion=r.sensors.motion;
+        }
+        if(r.display) this._config.display={...this._config.display,...r.display};
+        this._status='Config restored from HA backup';
+        setTimeout(()=>{this._status='';this._render();},5000);
+      }
+    }catch(e){
+      console.warn('[IoTDisplay] load_panel_config:',e);
+    }
+  }
+
+  async _saveToStorage(){
+    try{
+      const cfg={lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,display:this._config.display};
+      await this._hass.callWS({type:'ioteverythin_display/save_panel_config',config:cfg});
+      console.log('[IoTDisplay] Config saved to HA storage');
+    }catch(e){
+      console.warn('[IoTDisplay] save_panel_config:',e);
+    }
   }
 
   async _loadDeviceInfo(){
@@ -78,6 +114,8 @@ class IotEverythinDisplayPanel extends HTMLElement {
       const r=await this._hass.callWS({type:'ioteverythin_display/push_config',config:payload});
       this._status='Config pushed! (v'+(r.version||'?')+')';
       console.log('[IoTDisplay] push OK:',r);
+      // Auto-save to HA storage as backup
+      await this._saveToStorage();
     }catch(e){
       const em=e.message||e.code||((typeof e==='object')?JSON.stringify(e):String(e));
       this._status='Error: '+em;

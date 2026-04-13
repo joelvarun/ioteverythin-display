@@ -15,8 +15,12 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, DEFAULT_PORT
+
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.panel_config"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +69,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Store display endpoint info for the frontend panel to read
     hass.data[DOMAIN]["display_url"] = f"http://{host}:{DEFAULT_PORT}"
+
+    # Persistent storage for panel config (survives device reflash)
+    hass.data[DOMAIN]["store"] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
     # Register a websocket API for the panel to get display config
     # Token is created lazily on first push_config call
