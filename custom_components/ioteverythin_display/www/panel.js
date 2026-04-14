@@ -10,7 +10,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
   constructor(){
     super();
     this._hass=null;
-    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30}};
+    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},media:[],persons:[],tab3:'sensors',display:{brightness:80,timeout:30}};
     this._allEntities=[];
     this._activeTab='lights';
     this._deviceInfo=null;
@@ -56,6 +56,9 @@ class IotEverythinDisplayPanel extends HTMLElement {
           if(r.sensors.motion) this._config.sensors.motion=r.sensors.motion;
         }
         if(r.display) this._config.display={...this._config.display,...r.display};
+        if(r.media&&r.media.length>0) this._config.media=r.media;
+        if(r.persons&&r.persons.length>0) this._config.persons=r.persons;
+        if(r.tab3) this._config.tab3=r.tab3;
         this._status='Config restored from HA backup';
         setTimeout(()=>{this._status='';this._render();},5000);
       }
@@ -66,7 +69,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
 
   async _saveToStorage(){
     try{
-      const cfg={lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,display:this._config.display};
+      const cfg={lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,media:this._config.media,persons:this._config.persons,tab3:this._config.tab3,display:this._config.display};
       await this._hass.callWS({type:'ioteverythin_display/save_panel_config',config:cfg});
       console.log('[IoTDisplay] Config saved to HA storage');
     }catch(e){
@@ -97,6 +100,9 @@ class IotEverythinDisplayPanel extends HTMLElement {
         if(r.sensors.doors) this._config.sensors.doors=r.sensors.doors;
         if(r.sensors.motion) this._config.sensors.motion=r.sensors.motion;
       }
+      if(r.media&&r.media.length>0) this._config.media=r.media;
+      if(r.persons&&r.persons.length>0) this._config.persons=r.persons;
+      if(r.tab3) this._config.tab3=r.tab3;
       if(r.display){
         this._config.display={...this._config.display,...r.display};
       }
@@ -109,7 +115,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
     this._status='Pushing config to display...';
     this._render();
     try{
-      const payload={ha_token:'',lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,display:this._config.display};
+      const payload={ha_token:'',lights:this._config.lights,climate:this._config.climate,sensors:this._config.sensors,media:this._config.media,persons:this._config.persons,tab3:this._config.tab3,display:this._config.display};
       console.log('[IoTDisplay] Pushing config:',JSON.stringify(payload).length,'bytes');
       const r=await this._hass.callWS({type:'ioteverythin_display/push_config',config:payload});
       this._status='Config pushed! (v'+(r.version||'?')+')';
@@ -257,9 +263,11 @@ class IotEverythinDisplayPanel extends HTMLElement {
 <div class="hdr"><h1>Touch-i</h1><span style="color:#777;font-size:13px;margin-top:4px">by IoT Everythin</span><button class="refresh-btn" id="refresh-btn">Refresh</button></div>
 ${infoHtml}
 <div class="tabs">
-<div class="tab ${this._activeTab==='lights'?'active':''}" data-tab="lights">Lights (${nL})</div>
+<div class="tab ${this._activeTab==='lights'?'active':''}" data-tab="lights">Switches (${nL})</div>
 <div class="tab ${this._activeTab==='climate'?'active':''}" data-tab="climate">Climate (${nAC} ACs)</div>
 <div class="tab ${this._activeTab==='sensors'?'active':''}" data-tab="sensors">Sensors (${nD+nM})</div>
+<div class="tab ${this._activeTab==='media'?'active':''}" data-tab="media">Media (${this._config.media.length})</div>
+<div class="tab ${this._activeTab==='persons'?'active':''}" data-tab="persons">Persons (${this._config.persons.length})</div>
 <div class="tab ${this._activeTab==='display'?'active':''}" data-tab="display">Display</div>
 </div>
 <div id="tab-content">${this._renderTab()}</div>
@@ -276,6 +284,8 @@ ${infoHtml}
       case'lights':return this._renderLights();
       case'climate':return this._renderClimate();
       case'sensors':return this._renderSensors();
+      case'media':return this._renderMedia();
+      case'persons':return this._renderPersons();
       case'display':return this._renderDisplay();
     }return'';
   }
@@ -376,6 +386,32 @@ ${infoHtml}
 <button id="add-motion-btn">+ Add</button></div></div>`;
   }
 
+  _renderMedia(){
+    const mediaEnts=this._allEntities.filter(e=>e.startsWith('media_player.'));
+    const items=this._config.media||[];
+    const rows=items.map((m,i)=>`<div class="erow">
+<span class="fname">${this._friendly(m.eid)}</span>
+<input data-media-lbl="${i}" value="${m.label||''}" placeholder="Label" style="max-width:120px">
+<button data-rm-media="${i}" style="background:#611;color:#f88;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">✕</button>
+</div>`).join('');
+    return `<div class="sec"><h3>Media Players</h3>${rows||'<div style="color:#555;padding:8px">No media players added</div>'}
+<div class="add-row"><select id="media-picker"><option value="">Select media player...</option>${mediaEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<button id="add-media-btn">+ Add</button></div></div>`;
+  }
+
+  _renderPersons(){
+    const personEnts=this._allEntities.filter(e=>e.startsWith('person.'));
+    const items=this._config.persons||[];
+    const rows=items.map((p,i)=>`<div class="erow">
+<span class="fname">${this._friendly(p.eid)}</span>
+<input data-person-lbl="${i}" value="${p.label||''}" placeholder="Label" style="max-width:120px">
+<button data-rm-person="${i}" style="background:#611;color:#f88;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">✕</button>
+</div>`).join('');
+    return `<div class="sec"><h3>Persons / Presence</h3>${rows||'<div style="color:#555;padding:8px">No persons added</div>'}
+<div class="add-row"><select id="person-picker"><option value="">Select person...</option>${personEnts.map(e=>'<option value="'+e+'">'+this._friendly(e)+' ('+e+')</option>').join('')}</select>
+<button id="add-person-btn">+ Add</button></div></div>`;
+  }
+
   _renderDisplay(){
     const d=this._config.display||{};
     const br=d.brightness||80;
@@ -389,6 +425,9 @@ ${infoHtml}
 </div>`:''
     const toOpts=[['0','Disabled (always on)'],['10','10 seconds'],['15','15 seconds'],['30','30 seconds'],['60','1 minute'],['120','2 minutes'],['180','3 minutes'],['300','5 minutes'],['600','10 minutes']];
     const mkOpts=(val)=>toOpts.map(([v,l])=>`<option value="${v}"${+val==+v?' selected':''}>${l}</option>`).join('');
+    const tab3Val=this._config.tab3||'sensors';
+    const tab3Opts=[['sensors','Sensors'],['media','Media'],['presence','Presence']];
+    const tab3Sel=tab3Opts.map(([v,l])=>`<option value="${v}"${tab3Val===v?' selected':''}>${l}</option>`).join('');
     return `${batHtml}
 <div class="sec"><h3>Screen Settings</h3>
 <div class="field-row"><label>Brightness (${br}%):</label>
@@ -397,6 +436,11 @@ ${infoHtml}
 <div class="field-row"><label>Timeout:</label>
 <select id="disp-timeout">${mkOpts(to)}</select></div>
 <div style="color:#777;font-size:12px;margin-top:8px">Screen turns off after no touch. Touch to wake.</div>
+</div>
+<div class="sec"><h3>Third Tab</h3>
+<div class="field-row"><label>Show on 3rd tab:</label>
+<select id="tab3-select">${tab3Sel}</select></div>
+<div style="color:#777;font-size:12px;margin-top:8px">Choose what appears as the third tab on the display (after Switches &amp; Climate).</div>
 </div>`;
   }
 
@@ -426,6 +470,28 @@ ${infoHtml}
     this.querySelector('#add-motion-btn')?.addEventListener('click',()=>this._addMotion());
     this.querySelectorAll('[data-rm-motion]').forEach(el=>el.addEventListener('click',()=>{this._config.sensors.motion.splice(+el.dataset.rmMotion,1);this._render();}));
     this.querySelectorAll('[data-motion-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.sensors.motion[+el.dataset.motionLbl].label=el.value;}));
+    // Media bindings
+    this.querySelector('#add-media-btn')?.addEventListener('click',()=>{
+      const sel=this.querySelector('#media-picker');if(!sel||!sel.value)return;
+      if(!this._config.media)this._config.media=[];
+      if(this._config.media.find(m=>m.eid===sel.value))return;
+      const fn=this._friendly(sel.value);
+      this._config.media.push({eid:sel.value,label:fn.substring(0,23)});this._render();
+    });
+    this.querySelectorAll('[data-rm-media]').forEach(el=>el.addEventListener('click',()=>{this._config.media.splice(+el.dataset.rmMedia,1);this._render();}));
+    this.querySelectorAll('[data-media-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.media[+el.dataset.mediaLbl].label=el.value;}));
+    // Persons bindings
+    this.querySelector('#add-person-btn')?.addEventListener('click',()=>{
+      const sel=this.querySelector('#person-picker');if(!sel||!sel.value)return;
+      if(!this._config.persons)this._config.persons=[];
+      if(this._config.persons.find(p=>p.eid===sel.value))return;
+      const fn=this._friendly(sel.value);
+      this._config.persons.push({eid:sel.value,label:fn.substring(0,23)});this._render();
+    });
+    this.querySelectorAll('[data-rm-person]').forEach(el=>el.addEventListener('click',()=>{this._config.persons.splice(+el.dataset.rmPerson,1);this._render();}));
+    this.querySelectorAll('[data-person-lbl]').forEach(el=>el.addEventListener('change',()=>{this._config.persons[+el.dataset.personLbl].label=el.value;}));
+    // Tab3 selector binding
+    this.querySelector('#tab3-select')?.addEventListener('change',e=>{this._config.tab3=e.target.value;});
     // Display settings bindings
     this.querySelector('#disp-bright')?.addEventListener('input',e=>{
       const v=+e.target.value;this._config.display.brightness=v;
