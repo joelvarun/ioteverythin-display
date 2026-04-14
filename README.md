@@ -8,20 +8,29 @@
   A wall-mounted Home Assistant control panel on the Waveshare ESP32-S3-Touch-LCD-4
 </p>
 
+<p align="center">
+  <img src="docs/screenshot_climate.jpg" alt="Climate Tab" width="380">
+  <img src="docs/screenshot_switches.jpg" alt="Switches Tab" width="380">
+</p>
+
 ---
 
 ## What is Touch-i?
 
-Touch-i turns a **Waveshare ESP32-S3-Touch-LCD-4** (480×480 touch display) into a fully dynamic Home Assistant control panel. No entity IDs are hardcoded in firmware — everything is configured through a custom HACS sidebar panel that pushes configuration to the device over the local network.
+Touch-i turns a **Waveshare ESP32-S3-Touch-LCD-4** (480x480 touch display) into a fully dynamic Home Assistant control panel. No entity IDs are hardcoded in firmware. Everything is configured through a custom HACS sidebar panel that pushes configuration to the device over the local network.
 
 **Key features:**
 
-- **3-tab UI** — Lights, Climate, Sensors — all dynamically built from config
-- **Zero-code setup** — add entities from the HACS panel, hit Push, done
-- **Auto token management** — no manual long-lived token creation
-- **Screen dimmer** — configurable brightness and auto-off timeout with touch-to-wake
-- **Battery monitoring** — voltage, percentage, and charge status (for portable use)
-- **Dual-core architecture** — UI on Core 1, HA polling on Core 0 (no lag)
+- **3-tab UI** with configurable 3rd tab (Sensors, Media, or Presence)
+- **Switches tab** for lights and switches grouped by room/area, with dimmer and RGB support
+- **Climate tab** with live temperature/humidity gauges and AC control cards
+- **Media tab** with play/pause, prev/next, and volume control for media players
+- **Presence tab** showing who's home with person entity tiles
+- **Zero-code setup** from the HACS panel, hit Push, done
+- **Auto token management** with no manual long-lived token creation
+- **Screen sleep** with configurable brightness and auto-off timeout with touch-to-wake
+- **Battery monitoring** with voltage, percentage, charge status, and low battery red accent
+- **Dual-core architecture** with UI on Core 1 and HA polling on Core 0 (no lag)
 
 ---
 
@@ -76,9 +85,9 @@ Touch-i turns a **Waveshare ESP32-S3-Touch-LCD-4** (480×480 touch display) into
 │  │  Core 1: LVGL UI rendering (loop)          │      │
 │  │  Core 0: FreeRTOS HTTP fetch task          │      │
 │  │                                            │      │
-│  │  Tab 1: Lights  (grid, dimmer, RGB)        │      │
+│  │  Tab 1: Switches (grid, dimmer, RGB)       │      │
 │  │  Tab 2: Climate (temp/hum arcs, AC cards)  │      │
-│  │  Tab 3: Sensors (doors, motion)            │      │
+│  │  Tab 3: Sensors / Media / Presence         │      │
 │  └────────────────────────────────────────────┘      │
 │                    │                                 │
 │                    │  REST API (Bearer token)        │
@@ -116,13 +125,14 @@ Once configured, the ESP32 talks **directly** to Home Assistant's REST API. It p
 
 ## Display Features
 
-### Screen Dimmer
+### Screen Sleep
 
 The CH32V003 IO expander controls backlight brightness via PWM:
 
-- **Brightness**: Adjustable 10–100% from the HACS panel
+- **Brightness**: Adjustable 10-100% from the HACS panel
 - **Auto-off timeout**: Configurable (disabled / 10s / 30s / 1min / 2min / 5min / 10min)
 - **Touch-to-wake**: Any touch wakes the screen; first touch is consumed (prevents accidental taps)
+- **Sleep mode**: Screen goes black + backlight to minimum (BOOST_EN stays on for touch wake)
 - Settings persist across reboots (saved to NVS flash)
 
 ### Battery Monitoring
@@ -131,6 +141,7 @@ For portable/battery-powered setups:
 
 - **Voltage reading** via CH32V003 ADC (10-bit, ~2:1 voltage divider)
 - **Charge detection** via EXIO0 input pin (active-low charger status)
+- **Low battery accent**: UI accent color changes from gold to red at 10% or below (5% hysteresis)
 - Battery info displayed in the HACS panel's info bar
 
 ---
@@ -141,10 +152,12 @@ The sidebar panel (`panel.js`) is the primary configuration interface:
 
 | Tab | What you configure |
 |-----|--------------------|
-| **Lights** | Light/switch entities — set alias, icon, area, dimmable/RGB flags |
-| **Climate** | Temperature & humidity sensors, AC/climate entities with min/max temp |
+| **Switches** | Light/switch entities with alias, icon, area, dimmable/RGB flags |
+| **Climate** | Temperature and humidity sensors, AC/climate entities with min/max temp |
 | **Sensors** | Door/contact sensors (with inverted option), motion/occupancy sensors |
-| **Display** | Brightness slider, screen timeout, battery status |
+| **Media** | Media player entities for playback control on the display |
+| **Persons** | Person entities for presence tracking on the display |
+| **Display** | Brightness slider, screen timeout, 3rd tab selector, battery status |
 
 ### Auto Token Management
 
@@ -203,9 +216,9 @@ Connect and configure your WiFi credentials via the captive portal.
 | File | Purpose |
 |------|---------|
 | `src/main.cpp` | Boot sequence — display → WiFi → config server → HA UI |
-| `src/ha.cpp` | HA control panel — 3 tabs, dynamic entities, FreeRTOS fetch |
-| `src/config_server.cpp` | REST API on :8080 for config push/pull |
-| `src/display_hal.cpp` | Display init, backlight (CH32V003 PWM), battery ADC, screen timeout |
+| `src/ha.cpp` | HA control panel with 3 tabs, dynamic entities, media/presence, FreeRTOS fetch |
+| `src/config_server.cpp` | REST API on :8080 for config push/pull (FW v1.2.0) |
+| `src/display_hal.cpp` | Display init, backlight PWM (CH32V003), battery ADC, screen sleep |
 | `src/wifi_mgr.cpp` | WiFiManager-style AP provisioning + auto-reconnect |
 | `src/config.h` | Pin definitions and defaults |
 | `src/fa_icons.c` | FontAwesome icon subset for LVGL |
@@ -258,6 +271,19 @@ The HACS panel pushes this JSON to the ESP32 via `POST /api/config`:
       }
     ]
   },
+  "media": [
+    {
+      "eid": "media_player.living_room",
+      "label": "Living Room"
+    }
+  ],
+  "persons": [
+    {
+      "eid": "person.joel",
+      "label": "Joel"
+    }
+  ],
+  "tab3": "sensors",
   "display": {
     "brightness": 80,
     "timeout": 60
@@ -265,20 +291,24 @@ The HACS panel pushes this JSON to the ESP32 via `POST /api/config`:
 }
 ```
 
+New in v1.2.0: `media`, `persons`, and `tab3` fields for configurable 3rd tab.
+
 ---
 
 ## Design Decisions
 
 | Decision | Why |
 |----------|-----|
-| Per-entity polling (not bulk `/api/states`) | Bulk returns 600+ entities (~200 KB) — too large for PSRAM |
+| Per-entity polling (not bulk `/api/states`) | Bulk returns 600+ entities (~200 KB), too large for PSRAM |
 | PSRAM for entity arrays | Keeps main SRAM free for LVGL and stack |
 | FreeRTOS dual-core split | Core 0 = blocking HTTP, Core 1 = responsive UI |
 | NVS Preferences for config | Survives reboot, no filesystem overhead |
 | Auto token creation | Users never touch HA's token page |
 | Dynamic areas/categories | Built from config, not hardcoded |
-| Config push (not pull) | ESP32 is passive — panel pushes when ready |
-| CH32V003 PWM for backlight | Hardware PWM via IO expander — no GPIO needed from ESP32 |
+| Configurable 3rd tab | Users pick Sensors, Media, or Presence from the HACS panel |
+| Config push (not pull) | ESP32 is passive, panel pushes when ready |
+| CH32V003 PWM for backlight | Hardware PWM via IO expander, no GPIO needed from ESP32 |
+| Low battery red accent | Gold-to-red at 10% with 5% hysteresis |
 
 ---
 
