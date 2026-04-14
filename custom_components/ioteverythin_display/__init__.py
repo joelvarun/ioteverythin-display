@@ -25,7 +25,7 @@ STORAGE_KEY = f"{DOMAIN}.panel_config"
 _LOGGER = logging.getLogger(__name__)
 
 PANEL_URL = "/api/panel_custom/ioteverythin_display"
-PANEL_VERSION = "1.4"
+PANEL_VERSION = "1.5"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
