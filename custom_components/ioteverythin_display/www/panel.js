@@ -10,7 +10,7 @@ class IotEverythinDisplayPanel extends HTMLElement {
   constructor(){
     super();
     this._hass=null;
-    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30,battery_timeout:10}};
+    this._config={lights:[],climate:{temp_sensor:'',hum_sensor:'',acs:[]},sensors:{doors:[],motion:[]},display:{brightness:80,timeout:30}};
     this._allEntities=[];
     this._activeTab='lights';
     this._deviceInfo=null;
@@ -380,7 +380,6 @@ ${infoHtml}
     const d=this._config.display||{};
     const br=d.brightness||80;
     const to=d.timeout||30;
-    const bto=d.battery_timeout!=null?d.battery_timeout:10;
     const info=this._deviceInfo||{};
     const batHtml=info.battery_mv!==undefined
       ?`<div class="sec"><h3>Battery &amp; Power</h3>
@@ -395,11 +394,9 @@ ${infoHtml}
 <div class="field-row"><label>Brightness (${br}%):</label>
 <input type="range" id="disp-bright" min="10" max="100" step="5" value="${br}" style="flex:1;max-width:320px;accent-color:${GOLD}">
 </div>
-<div class="field-row"><label>Timeout (USB):</label>
+<div class="field-row"><label>Timeout:</label>
 <select id="disp-timeout">${mkOpts(to)}</select></div>
-<div class="field-row"><label>Timeout (Battery):</label>
-<select id="disp-bat-timeout">${mkOpts(bto)}</select></div>
-<div style="color:#777;font-size:12px;margin-top:8px">Separate timeouts for USB-powered and battery mode. Screen turns off after no touch. Touch to wake.</div>
+<div style="color:#777;font-size:12px;margin-top:8px">Screen turns off after no touch. Touch to wake.</div>
 </div>`;
   }
 
@@ -436,7 +433,6 @@ ${infoHtml}
       if(lbl)lbl.textContent='Brightness ('+v+'%):';
     });
     this.querySelector('#disp-timeout')?.addEventListener('change',e=>{this._config.display.timeout=+e.target.value;});
-    this.querySelector('#disp-bat-timeout')?.addEventListener('change',e=>{this._config.display.battery_timeout=+e.target.value;});
   }
 }
 customElements.define('ioteverythin-display-panel',IotEverythinDisplayPanel);
