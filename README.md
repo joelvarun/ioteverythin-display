@@ -39,7 +39,7 @@ Touch-i turns a **Waveshare ESP32-S3-Touch-LCD-4** (480x480 touch display) into 
 | Component | Detail |
 |-----------|--------|
 | Board | [Waveshare ESP32-S3-Touch-LCD-4](https://www.waveshare.com/esp32-s3-touch-lcd-4.htm) (V4, SKU 28154) |
-| SoC | ESP32-S3-N16R8 — 240 MHz dual-core, 16 MB Flash, 8 MB OPI PSRAM |
+| SoC | ESP32-S3-N16R8, 240 MHz dual-core, 16 MB Flash, 8 MB OPI PSRAM |
 | Display | 4″ 480×480 ST7701S RGB LCD (16-bit parallel) |
 | Touch | GT911 capacitive (I²C) |
 | IO Expander | CH32V003 at I²C 0x24 (backlight PWM, battery ADC, GPIO) |
@@ -49,53 +49,67 @@ Touch-i turns a **Waveshare ESP32-S3-Touch-LCD-4** (480x480 touch display) into 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Home Assistant                                     │
-│                                                     │
-│  ┌────────────────────────────────────────────┐      │
-│  │  HACS Integration (ioteverythin_display)   │      │
-│  │  ├── __init__.py     setup + sidebar panel │      │
-│  │  ├── config_flow.py  device setup wizard   │      │
-│  │  ├── websocket_api.py  WS bridge commands  │      │
-│  │  └── www/panel.js    sidebar UI            │      │
-│  └────────────────────────────────────────────┘      │
-│         │ WebSocket                ▲                  │
-│         ▼                         │                  │
-│  ┌──────────────┐                 │                  │
-│  │  Browser Tab  │─────────────────┘                  │
-│  │  (panel.js)   │──── HTTP POST /api/config ────┐   │
-│  └──────────────┘                                │   │
-└──────────────────────────────────────────────────│───┘
-                                                   │
-                    Local Network (HTTP)            │
-                                                   ▼
-┌─────────────────────────────────────────────────────┐
-│  ESP32-S3 Display (Touch-i)                         │
-│                                                     │
-│  ┌────────────────────────────────────────────┐      │
-│  │  Config Server (:8080)                     │      │
-│  │  GET  /api/info   → device info + battery  │      │
-│  │  GET  /api/config → current entity config  │      │
-│  │  POST /api/config → receive new config     │      │
-│  └────────────────────────────────────────────┘      │
-│                                                     │
-│  ┌────────────────────────────────────────────┐      │
-│  │  ha.cpp — HA Control Panel                 │      │
-│  │  Core 1: LVGL UI rendering (loop)          │      │
-│  │  Core 0: FreeRTOS HTTP fetch task          │      │
-│  │                                            │      │
-│  │  Tab 1: Switches (grid, dimmer, RGB)       │      │
-│  │  Tab 2: Climate (temp/hum arcs, AC cards)  │      │
-│  │  Tab 3: Sensors / Media / Presence         │      │
-│  └────────────────────────────────────────────┘      │
-│                    │                                 │
-│                    │  REST API (Bearer token)        │
-│                    │  GET  /api/states/{entity_id}   │
-│                    │  POST /api/services/{domain}/…  │
-│                    ▼                                 │
-│           Home Assistant :8123                       │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph HA["Home Assistant"]
+        direction TB
+        subgraph HACS["HACS Integration (ioteverythin_display)"]
+            init["__init__.py\nSetup + Sidebar Panel"]
+            cf["config_flow.py\nDevice Setup Wizard"]
+            ws["websocket_api.py\nWS Bridge Commands"]
+            panel["www/panel.js\nSidebar Config UI"]
+        end
+
+        subgraph Browser["Browser Tab"]
+            panelUI["panel.js\n6 Tabs: Switches, Climate,\nSensors, Media, Persons, Display"]
+        end
+
+        HAAPI["HA REST API :8123\n/api/states/entity_id\n/api/services/domain/service"]
+    end
+
+    subgraph ESP["ESP32-S3 Display (Touch-i)"]
+        direction TB
+        subgraph ConfigSrv["Config Server :8080"]
+            getinfo["GET /api/info\nDevice info + battery"]
+            getconf["GET /api/config\nCurrent entity config"]
+            postconf["POST /api/config\nReceive new config + token"]
+        end
+
+        subgraph HaCpp["ha.cpp HA Control Panel"]
+            core1["Core 1: LVGL UI Rendering"]
+            core0["Core 0: FreeRTOS HTTP Fetch"]
+            subgraph Tabs["Display Tabs"]
+                t1["Switches\nGrid, Dimmer, RGB"]
+                t2["Climate\nTemp/Hum Arcs, AC Cards"]
+                t3["Tab 3 (Configurable)\nSensors / Media / Presence"]
+            end
+        end
+
+        subgraph HW["Hardware Layer"]
+            nvs["NVS Flash\nConfig Storage"]
+            ch32["CH32V003 I2C 0x24\nBacklight PWM, Battery ADC\nCharge Detection"]
+            display["480x480 ST7701S\nRGB LCD + GT911 Touch"]
+        end
+    end
+
+    ws <-->|"WebSocket"| panelUI
+    panelUI -->|"HTTP POST /api/config\n(entities + token)"| postconf
+    panelUI -->|"HTTP GET /api/info"| getinfo
+    panelUI -->|"HTTP GET /api/config"| getconf
+    core0 <-->|"REST API\nBearer Token"| HAAPI
+    postconf --> nvs
+    nvs --> core1
+    core1 --> display
+    ch32 --> display
+
+    style HA fill:#1a3a5c,stroke:#4a9eff,color:#fff
+    style HACS fill:#1a2a3a,stroke:#d4a017,color:#fff
+    style Browser fill:#2a1a3a,stroke:#9b59b6,color:#fff
+    style ESP fill:#1a3a2a,stroke:#2ecc71,color:#fff
+    style ConfigSrv fill:#2a2a1a,stroke:#d4a017,color:#fff
+    style HaCpp fill:#1a2a2a,stroke:#3498db,color:#fff
+    style Tabs fill:#222,stroke:#d4a017,color:#fff
+    style HW fill:#2a1a1a,stroke:#e74c3c,color:#fff
 ```
 
 ### Data Flow
@@ -104,18 +118,9 @@ There are two separate communication paths:
 
 **1. Config Push (one-time setup)**
 
-```
-HACS Panel (browser)  ──HTTP POST──►  ESP32 :8080/api/config
-```
-
-The browser-based panel collects entity selections and pushes them directly to the ESP32. The integration auto-injects the HA URL and a long-lived access token into the payload. The ESP32 stores everything in NVS flash (Preferences) and rebuilds its UI on the fly — no reboot needed.
+The browser-based panel collects entity selections and pushes them directly to the ESP32 via `HTTP POST :8080/api/config`. The integration auto-injects the HA URL and a long-lived access token into the payload. The ESP32 stores everything in NVS flash (Preferences) and rebuilds its UI on the fly, no reboot needed.
 
 **2. State Polling (continuous operation)**
-
-```
-ESP32 (Core 0)  ──GET /api/states/{eid}──►  Home Assistant :8123
-ESP32 (Core 0)  ◄── JSON state response ──  Home Assistant :8123
-```
 
 Once configured, the ESP32 talks **directly** to Home Assistant's REST API. It polls each entity individually (~5 second cycle) on Core 0 via a FreeRTOS task. Core 1 handles LVGL rendering so the UI stays responsive. The HACS integration is **not** in the data path during normal operation.
 
@@ -161,7 +166,7 @@ The sidebar panel (`panel.js`) is the primary configuration interface:
 
 ### Auto Token Management
 
-The integration creates a long-lived access token automatically on first config push. No manual token setup is needed — the token is generated via `hass.auth`, injected into the config payload, and stored on the ESP32.
+The integration creates a long-lived access token automatically on first config push. No manual token setup needed. The token is generated via `hass.auth`, injected into the config payload, and stored on the ESP32.
 
 ---
 
@@ -215,7 +220,7 @@ Connect and configure your WiFi credentials via the captive portal.
 
 | File | Purpose |
 |------|---------|
-| `src/main.cpp` | Boot sequence — display → WiFi → config server → HA UI |
+| `src/main.cpp` | Boot sequence: display, WiFi, config server, HA UI |
 | `src/ha.cpp` | HA control panel with 3 tabs, dynamic entities, media/presence, FreeRTOS fetch |
 | `src/config_server.cpp` | REST API on :8080 for config push/pull (FW v1.2.0) |
 | `src/display_hal.cpp` | Display init, backlight PWM (CH32V003), battery ADC, screen sleep |
